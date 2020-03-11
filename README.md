@@ -1,26 +1,26 @@
-# mmarc
+# mmarch
 
-Command line tool to handle (extract, replace, pack, etc.) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 ressources from the games' files, typically lod files.
+Command line tool to handle (extract, replace resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files, typically lod files.
 
-Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([source](https://github.com/GrayFace/Misc/)) (mmarc is actually kind of a wrapper of MMArchive). If you need a graphical user interface tool, use MMArchive.
+Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([source](https://github.com/GrayFace/Misc/)) (mmarch is actually kind of a wrapper of MMArchive). If you need a graphical user interface tool, use MMArchive.
 
 ## Usage
 
 <pre>
-mmarc {<a href="#extract">extract</a>|<a href="#list">list</a>|<a href="#add">add</a>|<a href="#delete">delete</a>|<a href="#rename">rename</a>|<a href="#create">create</a>|<a href="#merge">merge</a>|<a href="#optimize">optimize</a>|<a href="#help">help</a>} &lt;archive_file&gt; [other_arguments]
+mmarch {<a href="#extract">extract</a>|<a href="#list">list</a>|<a href="#add">add</a>|<a href="#delete">delete</a>|<a href="#rename">rename</a>|<a href="#create">create</a>|<a href="#merge">merge</a>|<a href="#optimize">optimize</a>|<a href="#help">help</a>} &lt;archive_file&gt; [other_arguments]
 </pre>
 
 `<>`: required; `[]`: optional; `{a|b|c}`: required, choose one of them
 
-### `extract`
+### extract
 
 ```
-mmarc extract <archive_file> <folder> [file_to_extract_1] [file_to_extract_2] [...]
+mmarch extract <archive_file> <folder> [file_to_extract_1] [file_to_extract_2] [...]
 ```
 
-Extract file(s) from the archive file.
+Extract (i.e. unpack) file(s) from the archive file (i.e. resource package file, typically .lod files).
 
-If no file to extract is specified, it will extract all files in the archive file.
+If no `[file_to_extract_?]` is specified, it will extract all files in the archive file.
 
 `<folder>` is the path of the folder where the extracted file(s) will be placed.
 
@@ -36,39 +36,45 @@ If no file to extract is specified, it will extract all files in the archive fil
 **Examples:**
 
 ```
-mmarc extract events.lod .
+mmarch extract events.lod .
 ```
 
 ```
-mmarc extract events.lod myfolder
+mmarch extract events.lod myfolder
 ```
 
 ```
-mmarc extract events.lod "my folder/my subfolder"
+mmarch extract events.lod "my folder/my subfolder"
 ```
 
 ```
-mmarc extract events.lod myfolder items.txt OUT04.EVT
+mmarch extract events.lod myfolder items.txt OUT04.EVT
 ```
 
-### `list`
+### list
 
 ```
-mmarc list <archive_file>
+mmarch list <archive_file> [separator]
 ```
 
 List all file names in the archive file.
 
+`[separator]` is a string that separates the file names, use double quote (`""`) to enclose the separator. By default (when `[separator]` is not specified), windows newline (CRLF) will be used as the separator, which means it will output one file name per line.
+
 **Example:**
 
 ```
-mmarc list events.lod
+mmarch list events.lod
 ```
 
-### `add`
+```
+mmarch list events.lod "|"
+```
+
+### add
 
 ```
-mmarc add <archive_file> <file_to_add_1> [file_to_add_2] [...]
+mmarch add <archive_file> <file_to_add_1> [file_to_add_2] [...]
 ```
 
 Add file(s) into the archive file.
@@ -78,13 +84,13 @@ If a file with the same name (case-insensitive) exists in the archive file, it w
 **Example:**
 
 ```
-mmarc add events.lod items.txt OUT04.EVT new.txt
+mmarch add events.lod items.txt OUT04.EVT new.txt
 ```
 
-### `delete`
+### delete
 
 ```
-mmarc delete <archive_file> <file_to_delete_1> [file_to_delete_2] [...]
+mmarch delete <archive_file> <file_to_delete_1> [file_to_delete_2] [...]
 ```
 
 Delete file(s) from the archive file.
@@ -92,13 +98,13 @@ Delete file(s) from the archive file.
 **Example:**
 
 ```
-mmarc delete events.lod items.txt OUT04.EVT
+mmarch delete events.lod items.txt OUT04.EVT
 ```
 
-### `rename`
+### rename
 
 ```
-mmarc rename <archive_file> <old_file_name> <new_file_name>
+mmarch rename <archive_file> <old_file_name> <new_file_name>
 ```
 
 Rename a file in the archive file.
@@ -106,13 +112,13 @@ Rename a file in the archive file.
 **Example:**
 
 ```
-mmarc rename events.lod items.txt items_new.txt
+mmarch rename events.lod items.txt items_new.txt
 ```
 
-### `create`
+### create
 
 ```
-mmarc create <archive_file> <archive_file_type> <folder> [file_to_add_1] [file_to_add_2] [...]
+mmarch create <archive_file> <archive_file_type> <folder> [file_to_add_1] [file_to_add_2] [...]
 ```
 
 Create new archive file. It will be empty if no file to add is specified.
@@ -137,43 +143,45 @@ Create new archive file. It will be empty if no file to add is specified.
 **Example:**
 
 ```
-mmarc create events_new.lod mmiconslod . items.txt OUT04.EVT new.txt
+mmarch create events_new.lod mmiconslod . items.txt OUT04.EVT new.txt
 ```
 
-### `merge`
+### merge
 
 ```
-mmarc merge <archive_file> <archive_file_2>
+mmarch merge <archive_file> <archive_file_2>
 ```
 
 Merge two archive files.
 
+The first archive will change and the second will not. Resource files in the second archive, will be added into the first archive if they do not exist in the first archive, and will replace those in the first archive if files with same names exist in the first archive.
+
 **Example:**
 
 ```
-mmarc merge events.lod events2.lod
+mmarch merge events.lod events2.lod
 ```
 
-### `optimize`
+### optimize
 
 ```
-mmarc optimize <archive_file>
+mmarch optimize <archive_file>
 ```
 
 Optimize an archive file.
 
-Note that when mmarc outputs an archive file (in `mmarc {add|delete|rename|create|merge}` commands), it has already been optimized and you don't need to do it again.
+Note that when mmarch outputs an archive file (in `mmarch {add|delete|rename|create|merge}` commands), it has already been optimized and you don't need to do it again.
 
 **Example:**
 
 ```
-mmarc optimize events.lod
+mmarch optimize events.lod
 ```
 
-### `help`
+### help
 
 ```
-mmarc help
+mmarch help
 ```
 
 Display help information.
@@ -184,16 +192,77 @@ For the first argument, the initial letter of <code><strong>e</strong>xtract</co
 
 File names and paths are case-insensitive.
 
+The tool changes or replaces original archive or unpacked resource files permanently, you should consider copying them to other directory or with other names to make backups (e.g. `copy a.lod a.backup.lod`).
+
+## Work with batch, NSIS and other script
+
+`mmarch` can be used with [batch file](https://en.wikibooks.org/wiki/Windows_Batch_Scripting) (.bat) or [NSIS script](https://nsis.sourceforge.io/Main_Page) to produce game patch or MOD installation files. Also, with [Python](https://www.python.org/), [JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript), batch files, [PowerShell](https://docs.microsoft.com/en-us/powershell/) script, etc., `mmarch` can automatize the workflow of the development of Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 MODs and patches.
+
+Other useful tools that can be used by MM MOD/patch developers include Smacker (.smk) and Bink (.bik) video file formats' original developer's official [The RAD Video Tools](http://www.radgametools.com/bnkdown.htm) (to extract and replace sound from .bik and .smk videos. Essential tool for game video localization), hash tools ([certutil](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/certutil), [NSIS Crypto plug-in](https://nsis.sourceforge.io/Crypto_plug-in), ...), etc.
+
+### Batch file
+
+Simple demostration of some non-straightforward, advanced usages of batch file:
+
+Save the resource list (one file name per line) in an archive as a txt file:
+
+```
+mmarch list events.lod> events_temp_list.txt
+```
+
+Save the resource list in an archive as a txt file, with `|` as leading, trailing character and separators. Then search to see if `D17.STR` file exists in the archive:
+
+```
+@echo|set /p="|"> events_temp_list.txt
+mmarch list events.loD "|">> events_temp_list.txt
+@echo|set /p="|">> events_temp_list.txt
+
+findstr "|D17.STR|" events_temp_list.txt
+IF %errorlevel% == 0 (
+	echo Found!
+) ELSE (
+	echo Not found!
+)
+```
+
+## Limits
+
+`mmarch` can't handle palette.
+
+Actually among all those formats supported by MMArchive, I have only tested `.lod`.
+
+## Compilation
+
+How to compile the source of `mmarch`:
+
+* `git clone` or download mmarch's source
+* `git clone` or download [GrayFace/Misc](https://github.com/GrayFace/Misc)
+* Copy or move RSPak/ folder from GrayFace/Misc project into mmarch/ source folder
+* Open "mmarch.bdsproj" file with Borland Developer Studio 2006 or Delphi 10 (it may or may not work with newer version Borland, see [GrayFace's note](https://github.com/GrayFace/Misc))
+* Compile
+
 ## License
 
-[MIT](https://github.com/might-and-magic/mmarc/blob/master/LICENSE.md)
+[MIT](https://github.com/might-and-magic/mmarch/blob/master/LICENSE.md)
 
-## How to compile the source
 
-For developers:
 
-* `git clone` or download mmarc's source
-* `git clone` or download [GrayFace/Misc](https://github.com/GrayFace/Misc)
-* Copy or move RSPak/ folder from GrayFace/Misc project into mmarc/ source folder
-* Open "mmarc.bdsproj" file with Borland Developer Studio 2006 or Delphi 10 (it may or may not work with newer version Borland, see [GrayFace's note](https://github.com/GrayFace/Misc))
-* Compile
+
+## To do
+* extract  : done. to be retested
+* list     : done. to be retested
+* add      : done. to be retested
+* delete   : done. to be retested
+* rename   : done. to be retested
+* create   : 
+* merge    : done. to be retested
+* optimize : done. to be retested
+* help     : done. to be retested
+
+
+
+
+
+
+	// to do: check if method = `fvsrb`, methodNumber = ?
+	再试一下merge的顺序

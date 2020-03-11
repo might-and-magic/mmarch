@@ -1,4 +1,4 @@
-program mmarc;
+program mmarch;
 
 {$APPTYPE CONSOLE}
 
@@ -9,25 +9,38 @@ var
 	method : string;
 	methodNumber : integer;
 	archiveFile : string;
+	arcTemp : TRSMMArchive;
 
+FileName: string;
+ver: TRSLodVersion;
+s, dir: string;
+
+const
+  vers: array[0..14] of TRSLodVersion = (RSLodHeroes, RSLodHeroes, RSLodHeroes,
+    RSLodGames, RSLodHeroes, RSLodGames, RSLodBitmaps, RSLodIcons, RSLodSprites,
+    RSLodMM8, RSLodGames7, RSLodGames, RSLodChapter7, RSLodChapter, RSLodHeroes
+  );
 procedure help;
 begin
-	WriteLn('Usage:');
-	WriteLn('mmarc extract <archive_file> <folder> [file_to_extract_1] [file_to_extract_2] [...]');
-	WriteLn('mmarc list <archive_file>');
-	WriteLn('mmarc add <archive_file> <file_to_add_1> [file_to_add_2] [...]');
-	WriteLn('mmarc delete <archive_file> <file_to_delete_1> [file_to_delete_2] [...]');
-	WriteLn('mmarc rename <archive_file> <old_file_name> <new_file_name>');
-	WriteLn('mmarc create <archive_file> <archive_file_type> <folder> [file_to_add_1] [file_to_add_2] [...]');
-	WriteLn('mmarc merge <archive_file> <archive_file_2>');
-	WriteLn('mmarc optimize <archive_file>');
-	WriteLn('mmarc help');
-	WriteLn('Read https://github.com/might-and-magic/mmarc for more details.');
+	WriteLn('Usage (`<>`: required; `[]`: optional):');
+	WriteLn;
+	WriteLn('mmarch extract <archive_file> <folder> [file_to_extract_1] [file_to_extract_2] [...]');
+	WriteLn('mmarch list <archive_file> [separator]');
+	WriteLn('mmarch add <archive_file> <file_to_add_1> [file_to_add_2] [...]');
+	WriteLn('mmarch delete <archive_file> <file_to_delete_1> [file_to_delete_2] [...]');
+	WriteLn('mmarch rename <archive_file> <old_file_name> <new_file_name>');
+	WriteLn('mmarch create <archive_file> <archive_file_type> <folder> [file_to_add_1] [file_to_add_2] [...]');
+	WriteLn('mmarch merge <archive_file> <archive_file_2>');
+	WriteLn('mmarch optimize <archive_file>');
+	WriteLn('mmarch help');
+	WriteLn;
+	WriteLn('Read https://github.com/might-and-magic/mmarch for more details.');
 end;
 
 procedure showError(const str : string);
 begin
 	WriteLn('Error: ' + str);
+	WriteLn;
 	help;
 end;
 
@@ -106,7 +119,6 @@ begin
 						arc.Extract(fileIndex, folder);
 				end;
 			end;
-			arc.RawFiles.Rebuild();
 		end;
 	except
 		on E : Exception do
@@ -116,17 +128,30 @@ end;
 
 procedure list;
 var
+	separator : string;
 	arc : TRSMMArchive;
 	fFiles : TRSMMFiles;
 	fileCountMinusOne : integer;
 	i : integer;
+	fileNameListStr : string;
 begin
 	try
+		separator := ParamStr(3);
+		if separator = '' then
+			separator := #13#10;
+
 		arc := RSLoadMMArchive(archiveFile);
 		fFiles := arc.RawFiles;
 		fileCountMinusOne := fFiles.Count - 1;
+		fileNameListStr := '';
+
 		for i := 0 to fileCountMinusOne do
-			WriteLn(fFiles.Name[i]);
+			begin
+				if i = fileCountMinusOne then
+					separator := '';
+				fileNameListStr := fileNameListStr + fFiles.Name[i] + separator;
+			end;
+		Write(fileNameListStr);
 	except
 		on E : Exception do
 			WriteLn(E.Message);
@@ -165,10 +190,33 @@ end;
 
 procedure delete;
 var
-	aa : string;
+	fileName : string;
+	arc : TRSMMArchive;
+	i : integer;
+	fileIndex : integer;
 begin
 	try
-		WriteLn('delete');
+		fileName := ParamStr(3);
+		if fileName = '' then
+			showError('You must specify at least one file to delete')
+		else
+		begin
+			arc := RSLoadMMArchive(archiveFile);
+
+			for i := 3 to ParamCount do
+			begin
+				fileName := ParamStr(i);
+				if fileName <> '' then
+				begin
+					fileIndex := getIndexByFileName(fileName, arc);
+					if fileIndex = -1 then
+						WriteLn('Warning: file ' + fileName + ' is not found in the archive and therefore skipped')
+					else
+						arc.RawFiles.Delete(fileIndex);
+				end;
+			end;
+			arc.RawFiles.Rebuild();
+		end;
 	except
 		on E : Exception do
 			WriteLn(E.Message);
@@ -177,10 +225,30 @@ end;
 
 procedure rename;
 var
-	aa : string;
+	fileName : string;
+	newFileName : string;
+	arc : TRSMMArchive;
+	fFiles : TRSMMFiles;
+	fileIndex : integer;
 begin
 	try
-		WriteLn('rename');
+		fileName := ParamStr(3);
+		newFileName := ParamStr(4);
+		if (fileName = '') or (newFileName = '') then
+			showError('You must specify a file to rename, and a file name that the file will be renamed to')
+		else
+		begin
+			arc := RSLoadMMArchive(archiveFile);
+			fileIndex := getIndexByFileName(fileName, arc);
+			if fileIndex = -1 then
+				WriteLn('Error: file ' + fileName + ' is not found in the archive')
+			else
+			begin
+				fFiles := arc.RawFiles;
+				fFiles.Rename(fileIndex, newFileName);
+				fFiles.Rebuild();
+			end;
+		end;
 	except
 		on E : Exception do
 			WriteLn(E.Message);
@@ -199,6 +267,7 @@ begin
 		begin
 			WriteLn('create');
 		end;
+		// arc.RawFiles.Rebuild();
 	except
 		on E : Exception do
 			WriteLn(E.Message);
@@ -207,10 +276,27 @@ end;
 
 procedure merge;
 var
-	aa : string;
+	arc : TRSMMArchive;
+	fFiles : TRSMMFiles;
+	archiveFileB : string;
+	arcB : TRSMMArchive;
+	fFilesB : TRSMMFiles;
 begin
 	try
-		WriteLn('merge');
+		archiveFileB := ParamStr(3);
+		if archiveFileB = '' then
+			showError('You must specify two archive files to be merged together')
+		else
+		begin
+			arc := RSLoadMMArchive(archiveFile);
+			fFiles := arc.RawFiles;
+
+			arcB := RSLoadMMArchive(archiveFileB);
+			fFilesB := arcB.RawFiles;
+
+			fFilesB.MergeTo(fFiles);
+			fFiles.Rebuild();
+		end;
 	except
 		on E : Exception do
 			WriteLn(E.Message);
@@ -219,10 +305,11 @@ end;
 
 procedure optimize;
 var
-	aa : string;
+	arc : TRSMMArchive;
 begin
 	try
-		WriteLn('optimize');
+		arc := RSLoadMMArchive(archiveFile);
+		arc.RawFiles.Rebuild();
 	except
 		on E : Exception do
 			WriteLn(E.Message);
@@ -241,46 +328,85 @@ end;
 
 begin
 
-	// to do: check if method = `fvsrb`, methodNumber = ?
 
-	method := trimChar(ParamStr(1));
-	methodNumber := AnsiIndexStr(method, ['extract', 'e', 'list', 'l', 'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm', 'optimize', 'o', 'help', 'h', '']);
-	archiveFile := ParamStr(2);
-	if (archiveFile = '') And (methodNumber < 16) then // < 16 : method is not `help`
-		showError('You must specify an archive file')
-	else
+
+	// arcTemp := TRSMMArchive.Create('1.lod');
+
+// var
+//   ver: TRSLodVersion;
+//   s, dir: string;
+//   SaveDialogNew.InitialDir:= DialogToFolder(OpenDialog1);
+//   SaveDialogNew.FileName:= '';
+//   if not SaveDialogNew.Execute then exit;
+//   FreeArchive;
+//   OpenDialog1.FileName:= SaveDialogNew.FileName;
+//   dir:= ExtractFilePath(SaveDialogNew.FileName);
+//   RSCreateDir(dir);
+//   s:= ExtractFileExt(SaveDialogNew.FileName);
+
+
+
+//   ver:= vers[SaveDialogNew.FilterIndex - 1];
+
+
+	FileName:= 'aa.lod';
+	s:= ExtractFileExt(FileName);
+
+	if SameText(s, '.snd') then
 	begin
-		Case methodNumber of
-			0: extract;
-			1: extract;
-			2: list;
-			3: list;
-			4: add;
-			5: add;
-			6: delete;
-			7: delete;
-			8: rename;
-			9: rename;
-			10: create;
-			11: create;
-			12: merge;
-			13: merge;
-			14: optimize;
-			15: optimize;
-			16: help;
-			17: help;
-			18: help;
-		else
-			showError('Unknown method: ' + method);
-		end;
+		arcTemp:= TRSSnd.Create;
+		TRSSnd(arcTemp).New(FileName, ver <> RSLodHeroes);
+	end else
+	if SameText(s, '.vid') then
+	begin
+		arcTemp:= TRSVid.Create;
+		TRSVid(arcTemp).New(FileName, ver <> RSLodHeroes);
+	end else
+	begin
+		arcTemp:= TRSLod.Create;
+		TRSLod(arcTemp).New(FileName, ver);
 	end;
+
+
+
+
+	// method := trimChar(ParamStr(1));
+	// methodNumber := AnsiIndexStr(method, ['extract', 'e', 'list', 'l', 'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm', 'optimize', 'o', 'help', 'h', '']);
+	// archiveFile := ParamStr(2);
+	// if (archiveFile = '') And (methodNumber < 16) then // < 16 : method is not `help`
+	// 	showError('You must specify an archive file')
+	// else
+	// begin
+	// 	Case methodNumber of
+	// 		0: extract;
+	// 		1: extract;
+	// 		2: list;
+	// 		3: list;
+	// 		4: add;
+	// 		5: add;
+	// 		6: delete;
+	// 		7: delete;
+	// 		8: rename;
+	// 		9: rename;
+	// 		10: create;
+	// 		11: create;
+	// 		12: merge;
+	// 		13: merge;
+	// 		14: optimize;
+	// 		15: optimize;
+	// 		16: help;
+	// 		17: help;
+	// 		18: help;
+	// 	else
+	// 		showError('Unknown method: ' + method);
+	// 	end;
+	// end;
 end.
 
 
-// TRSMMArchive
+// TRSMMArchive:
 // constructor Create; override;
 // destructor Destroy; override;
-
 // function Add(const Name: string; Data: TStream; Size: int = -1; pal: int = 0): int; overload; virtual;
 // function Add(const Name: string; Data: TRSByteArray; pal: int = 0): int; overload; // virtual;
 // function Add(const FileName: string; pal: int = 0): int; overload; // virtual;
@@ -296,7 +422,6 @@ end.
 // function CloneForProcessing(const NewFile: string; FilesCount: int = 0): TRSMMArchive; virtual;
 // procedure Load(const FileName: string); override;
 // procedure SaveAs(const FileName: string); override;
-
 // property RawFiles: TRSMMFiles read FFiles;
 // property BackupOnAdd: Boolean read FBackupOnAdd write FBackupOnAdd;
 // property BackupOnAddOverwrite: Boolean read FBackupOnAddOverwrite write FBackupOnAddOverwrite;
@@ -304,7 +429,7 @@ end.
 // property BackupOnDeleteOverwrite: Boolean read FBackupOnDeleteOverwrite write FBackupOnDeleteOverwrite;
 
 
-// TRSMMFiles
+// TRSMMFiles:
 // constructor Create;
 // destructor Destroy; override;
 // procedure New(const FileName: string; const Options: TRSMMFilesOptions);
