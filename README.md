@@ -61,7 +61,7 @@ List all file names in the archive file.
 
 `[separator]` is a string that separates the file names, use double quote (`""`) to enclose the separator. By default (when `[separator]` is not specified), windows newline (CRLF) will be used as the separator, which means it will output one file name per line.
 
-**Example:**
+**Examples:**
 
 ```
 mmarch list events.lod
@@ -121,7 +121,7 @@ mmarch rename events.lod items.txt items_new.txt
 mmarch create <archive_file> <archive_file_type> <folder> [file_to_add_1] [file_to_add_2] [...]
 ```
 
-Create new archive file. It will be empty if no file to add is specified.
+Create a new archive file from scratch. It will be empty if no `[file_to_add_?]` is specified.
 
 `<folder>` is the path of the folder where the new archive file will be placed.
 
@@ -139,6 +139,10 @@ Create new archive file. It will be empty if no file to add is specified.
 * `mm6gameslod`: MM 6 games archive (*.lod)
 * `mm78save`: MM 7-8 saved game archive (*.lod; *.mm7; *.dod)
 * `mm6save`: MM 6 saved game archive (*.lod; *.mm6)
+
+Use correct extension for your `<archive_file>`, wrong extension will cause wrong file format even if `<archive_file_type>` is correct.
+
+Use `mmarch create` with caution. If possible, use `mmarch add` to modify an existing archive file instead of creating a new one.
 
 **Example:**
 
@@ -192,7 +196,7 @@ For the first argument, the initial letter of <code><strong>e</strong>xtract</co
 
 File names and paths are case-insensitive.
 
-The tool changes or replaces original archive or unpacked resource files permanently, you should consider copying them to other directory or with other names to make backups (e.g. `copy a.lod a.backup.lod`).
+The tool changes or overrides original archive or unpacked resource files permanently, you should consider copying them to other directory or with other names to make backups (e.g. `copy a.lod a.backup.lod`).
 
 ## Work with batch, NSIS and other script
 
@@ -244,25 +248,3 @@ How to compile the source of `mmarch`:
 ## License
 
 [MIT](https://github.com/might-and-magic/mmarch/blob/master/LICENSE.md)
-
-
-
-
-## To do
-* extract  : done. to be retested
-* list     : done. to be retested
-* add      : done. to be retested
-* delete   : done. to be retested
-* rename   : done. to be retested
-* create   : 
-* merge    : done. to be retested
-* optimize : done. to be retested
-* help     : done. to be retested
-
-
-
-
-
-
-	// to do: check if method = `fvsrb`, methodNumber = ?
-	再试一下merge的顺序
