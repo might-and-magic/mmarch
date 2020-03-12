@@ -4,6 +4,8 @@ Command line tool to handle (extract, replace resources and more) Heroes of Migh
 
 Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([source](https://github.com/GrayFace/Misc/)) (mmarch is actually kind of a wrapper of MMArchive). If you need a graphical user interface tool, use MMArchive.
 
+[Download mmarch v1.0](https://github.com/might-and-magic/mmarch/releases/download/v1.0/mmarch.exe)
+
 ## Usage
 
 <pre>
