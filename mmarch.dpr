@@ -13,7 +13,7 @@ var
 
 procedure help;
 begin
-	WriteLn('Usage (`<>`: required; `[]`: optional):');
+	WriteLn('mmarch Version 1.0 Usage:');
 	WriteLn;
 	WriteLn('mmarch extract <archive_file> <folder> [file_to_extract_1] [file_to_extract_2] [...]');
 	WriteLn('mmarch list <archive_file> [separator]');
@@ -24,6 +24,12 @@ begin
 	WriteLn('mmarch merge <archive_file> <archive_file_2>');
 	WriteLn('mmarch optimize <archive_file>');
 	WriteLn('mmarch help');
+	WriteLn;
+	WriteLn('(`<>`: required; `[]`: optional):');
+	WriteLn;
+	WriteLn('- Initial letter of the first argument can be used (e.g. `e` for `extract`)');
+	WriteLn('- Use `.` for current folder');
+	WriteLn('- File names are case-insensitive');
 	WriteLn;
 	WriteLn('Read https://github.com/might-and-magic/mmarch for more details.');
 end;
