@@ -4,10 +4,10 @@ program mmarch;
 {$APPTYPE CONSOLE}
 
 uses
-	SysUtils, StrUtils, RSLod, RSLodEdt, RSSysUtils, Graphics, RSGraphics, RSDefLod;
+	SysUtils, StrUtils, RSLod, RSLodEdt, RSSysUtils, Graphics, RSGraphics, RSDefLod, RSQ;
 
 const
-	VERSION : string = '1.1';
+	VERSION : string = '2.0';
 
 var
 	method, archiveFile : string;
@@ -20,11 +20,9 @@ begin
 	WriteLn('mmarch extract <ARCHIVE_FILE> <FOLDER> [FILE_TO_EXTRACT_1] [FILE_TO_EXTRACT_2] [...]');
 	WriteLn('mmarch list <ARCHIVE_FILE> [SEPARATOR]');
 	WriteLn('mmarch add <ARCHIVE_FILE> <FILE_TO_ADD_1> [FILE_TO_ADD_2] [...]');
-	WriteLn('mmarch add <ARCHIVE_FILE> <FILE_TO_ADD_1> [/p PALETTE_INDEX_1] [FILE_TO_ADD_2] [/p PALETTE_INDEX_2] [...]');
 	WriteLn('mmarch delete <ARCHIVE_FILE> <FILE_TO_DELETE_1> [FILE_TO_DELETE_2] [...]');
 	WriteLn('mmarch rename <ARCHIVE_FILE> <OLD_FILE_NAME> <NEW_FILE_NAME>');
 	WriteLn('mmarch create <ARCHIVE_FILE> <ARCHIVE_FILE_TYPE> <FOLDER> [FILE_TO_ADD_1] [FILE_TO_ADD_2] [...]');
-	WriteLn('mmarch create <ARCHIVE_FILE> <ARCHIVE_FILE_TYPE> <FOLDER> [FILE_TO_ADD_1] [/p PALETTE_INDEX_1] [FILE_TO_ADD_2] [/p PALETTE_INDEX_2] [...]');
 	WriteLn('mmarch merge <ARCHIVE_FILE> <ARCHIVE_FILE_2>');
 	WriteLn('mmarch optimize <ARCHIVE_FILE>');
 	WriteLn('mmarch help');
@@ -32,8 +30,11 @@ begin
 	WriteLn('(`<>`: required; `[]`: optional):');
 	WriteLn;
 	WriteLn('- Initial letter of the first argument can be used (e.g. `e` for `extract`)');
-	WriteLn('- Use `.` for current folder');
 	WriteLn('- File names are case-insensitive');
+	WriteLn('-             . : current folder');
+	WriteLn('-      * or *.* : all files');
+	WriteLn('- *.EXT / *.txt : all files with specified extension');
+	WriteLn('-            *. : all files without extension');
 	WriteLn;
 	WriteLn('Read https://github.com/might-and-magic/mmarch for more details.');
 end;
@@ -169,6 +170,11 @@ begin
 				fileName := ParamStr(i);
 				if fileName <> '' then
 				begin
+
+// fileName contains '*'
+
+
+
 					fileIndex := getIndexByFileName(fileName, arch);
 
 					if fileIndex = -1 then
@@ -225,7 +231,6 @@ const
 	SEPaletteMustExist: string = 'Image must be in 256 colors mode and palette must be added to bitmaps.lod';
 	SEPaletteNotFound: string = 'Failed to find matching palette in [*.]bitmaps.lod';
 begin
-	Sender.LoadBitmapsLods('./');//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	if (Bitmap.PixelFormat <> pf8bit) or (Sender.BitmapsLods = nil) then
 		raise Exception.Create(SEPaletteMustExist);
 
@@ -238,12 +243,54 @@ begin
 		raise Exception.Create(SEPaletteNotFound);
 end;
 
-procedure add;
+procedure addProc(arch : TRSMMArchive; paramIndexFrom: integer);
 var
 	fileName, dotExt : string;
-	arch : TRSMMArchive;
 	i, pal : integer;
 	ver : TRSLodVersion;
+	Sender : TRSLod;
+begin
+	Sender := TRSLod(arch);
+	ver := Sender.Version;
+	i := paramIndexFrom;
+	while i <= ParamCount do
+	begin
+		fileName := ParamStr(i);
+		if fileName <> '' then // has file to add
+		begin
+
+// fileName contains '*'
+
+
+
+			dotExt := AnsiRightStr(fileName, 4);
+			if SameText(dotExt, '.bmp') and ((ver = RSLodBitmaps) or (ver = RSLodSprites)) then // need pal
+			begin
+				if (i <= ParamCount - 2) and (SameText(ParamStr(i + 1), '/p')) then // pal specified
+				begin
+					pal := strtoint(ParamStr(i + 2));
+					i := i + 2;
+				end
+				else
+				begin
+					WriteLn(ExtractFilePath(arch.RawFiles.FileName));
+					Sender.LoadBitmapsLods(ExtractFilePath(arch.RawFiles.FileName));
+					pal := getPalette(Sender, RSLoadBitmap(fileName));
+				end;
+				arch.Add(fileName, pal);
+			end
+			else
+				arch.Add(fileName);
+		end;
+		i := i + 1; // increment no matter what
+	end;
+	// this procedure does not do arch.RawFiles.Rebuild();
+end;
+
+procedure add;
+var
+	fileName : string;
+	arch : TRSMMArchive;
 begin
 	try
 		fileName := ParamStr(3);
@@ -252,32 +299,7 @@ begin
 		else
 		begin
 			arch := RSLoadMMArchive(archiveFile);
-			ver := TRSLod(arch).Version;
-
-			i := 3;
-			while i <= ParamCount do
-			begin
-				fileName := ParamStr(i);
-				if fileName <> '' then // has file to add
-				begin
-					dotExt := AnsiRightStr(fileName, 4);
-					if SameText(dotExt, '.bmp') and ((ver = RSLodBitmaps) or (ver = RSLodSprites)) then // need pal
-					begin
-						if (i <= ParamCount - 2) and (SameText(ParamStr(i + 1), '/p')) then // pal specified
-						begin
-							pal := strtoint(ParamStr(i + 2));
-							i := i + 2;
-						end
-						else
-							pal := getPalette(TRSLod(arch), RSLoadBitmap(fileName));
-						WriteLn(IntToStr(pal));
-						arch.Add(fileName, pal);
-					end
-					else
-						arch.Add(fileName);
-				end;
-				i := i + 1; // increment no matter what
-			end;
+			addProc(arch, 3);
 			arch.RawFiles.Rebuild();
 		end;
 	except
@@ -305,6 +327,10 @@ begin
 				fileName := ParamStr(i);
 				if fileName <> '' then
 				begin
+
+// fileName contains '*'
+
+
 					fileIndex := getIndexByFileName(fileName, arch);
 					if fileIndex = -1 then
 						WriteLn('Warning: file ' + fileName + ' is not found in the archive and therefore skipped')
@@ -353,9 +379,8 @@ end;
 
 procedure create;
 var
-	arcFileType, folder, ext, fileName : string;
+	arcFileType, folder, ext : string;
 	arch : TRSMMArchive;
-	i : integer;
 	ver: TRSLodVersion;
 
 const
@@ -393,14 +418,7 @@ begin
 				TRSLod(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver);
 			end;
 
-			for i := 5 to ParamCount do
-			begin
-				fileName := ParamStr(i);
-				if fileName <> '' then
-				begin
-					arch.Add(fileName);
-				end;
-			end;
+			addProc(arch, 5);
 
 			arch.RawFiles.Rebuild();
 		end;
@@ -461,6 +479,17 @@ begin
 end;
 
 begin
+
+	// WriteLn(ExtractFilePath('.\*.txt'));
+	// WriteLn(ExtractFilePath('.\*.*'));
+	// WriteLn(ExtractFilePath('.\*'));
+	// WriteLn(ExtractFilePath('folder1/*.txt'));
+	// WriteLn(ExtractFilePath('folder2/*.*'));
+	// WriteLn(ExtractFilePath('folder3/*'));
+
+
+
+
 	method := trimChar(ParamStr(1));
 	methodNumber := AnsiIndexStr(method, ['extract', 'e', 'list', 'l',
 		'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm',
