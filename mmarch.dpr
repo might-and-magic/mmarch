@@ -4,25 +4,29 @@ program mmarch;
 {$APPTYPE CONSOLE}
 
 uses
-	SysUtils, StrUtils, RSLod, RSLodEdt;
+	SysUtils, StrUtils, RSLod, RSLodEdt, RSSysUtils, Graphics, RSGraphics, RSDefLod;
+
+const
+	VERSION : string = '1.1';
 
 var
-	method : string;
+	method, archiveFile : string;
 	methodNumber : integer;
-	archiveFile : string;
 
 procedure help;
 begin
-	WriteLn('mmarch Version 1.0 Usage:');
+	WriteLn('mmarch Version ' + VERSION + ' Usage:');
 	WriteLn;
-	WriteLn('mmarch extract <archive_file> <folder> [file_to_extract_1] [file_to_extract_2] [...]');
-	WriteLn('mmarch list <archive_file> [separator]');
-	WriteLn('mmarch add <archive_file> <file_to_add_1> [file_to_add_2] [...]');
-	WriteLn('mmarch delete <archive_file> <file_to_delete_1> [file_to_delete_2] [...]');
-	WriteLn('mmarch rename <archive_file> <old_file_name> <new_file_name>');
-	WriteLn('mmarch create <archive_file> <archive_file_type> <folder> [file_to_add_1] [file_to_add_2] [...]');
-	WriteLn('mmarch merge <archive_file> <archive_file_2>');
-	WriteLn('mmarch optimize <archive_file>');
+	WriteLn('mmarch extract <ARCHIVE_FILE> <FOLDER> [FILE_TO_EXTRACT_1] [FILE_TO_EXTRACT_2] [...]');
+	WriteLn('mmarch list <ARCHIVE_FILE> [SEPARATOR]');
+	WriteLn('mmarch add <ARCHIVE_FILE> <FILE_TO_ADD_1> [FILE_TO_ADD_2] [...]');
+	WriteLn('mmarch add <ARCHIVE_FILE> <FILE_TO_ADD_1> [/p PALETTE_INDEX_1] [FILE_TO_ADD_2] [/p PALETTE_INDEX_2] [...]');
+	WriteLn('mmarch delete <ARCHIVE_FILE> <FILE_TO_DELETE_1> [FILE_TO_DELETE_2] [...]');
+	WriteLn('mmarch rename <ARCHIVE_FILE> <OLD_FILE_NAME> <NEW_FILE_NAME>');
+	WriteLn('mmarch create <ARCHIVE_FILE> <ARCHIVE_FILE_TYPE> <FOLDER> [FILE_TO_ADD_1] [FILE_TO_ADD_2] [...]');
+	WriteLn('mmarch create <ARCHIVE_FILE> <ARCHIVE_FILE_TYPE> <FOLDER> [FILE_TO_ADD_1] [/p PALETTE_INDEX_1] [FILE_TO_ADD_2] [/p PALETTE_INDEX_2] [...]');
+	WriteLn('mmarch merge <ARCHIVE_FILE> <ARCHIVE_FILE_2>');
+	WriteLn('mmarch optimize <ARCHIVE_FILE>');
 	WriteLn('mmarch help');
 	WriteLn;
 	WriteLn('(`<>`: required; `[]`: optional):');
@@ -41,15 +45,13 @@ begin
 	help;
 end;
 
-function getIndexByFileName(const fileName : string; const arch : TRSMMArchive) : integer;
+function getIndexByExactFileName(const fileName : string; const fFiles : TRSMMFiles) : integer;
 var
-	fFiles : TRSMMFiles;
 	fileCountMinusOne : integer;
 	i : integer;
 begin
 	Result := -1; // if file is not found, returns -1
 	try
-		fFiles := arch.RawFiles;
 		fileCountMinusOne := fFiles.Count - 1;
 		for i := 0 to fileCountMinusOne do
 		begin
@@ -65,13 +67,77 @@ begin
 	end;
 end;
 
+function getIndexByFileName(const fileName : string; const arch : TRSMMArchive) : integer;
+var
+	fFiles : TRSMMFiles;
+	fileName2, dotExt : string;
+	ver : TRSLodVersion;
+begin
+	Result := -1;
+	try
+
+		fFiles := arch.RawFiles;
+		fileName2 := fileName;
+
+		// we don't use fFiles.FindFile(fileName, indexTemp);
+		// it's actually a fuzzy match and unreliable
+		// (icons.lod '2HSword1.bmp' can get 2HSword2.bmp's index)
+		Result := getIndexByExactFileName(fileName2, fFiles);
+		
+		if Result = -1 then
+		begin
+			ver := TRSLod(arch).Version;
+			dotExt := AnsiRightStr(fileName2, 4);
+
+			// | Type         | Archive Format | In-Archive Ext | Extracted Ext |
+			// |--------------|----------------|----------------|---------------|
+			// | RSLodHeroes  | `h3lod`        | `pcx`          | `bmp`         |
+			// | RSLodHeroes  | `h3snd`        | No Extension   | `wav`         |
+			// | RSLodGames   | `mmsnd`        | No Extension   | `wav`         |
+			// | RSLodGames   | `mm6vid`       | No Extension   | `smk`         |
+			// | RSLodBitmaps | `mmbitmapslod` | No Extension   | `bmp`         |
+			// | RSLodBitmaps | `mmbitmapslod` | No Extension   | `act`         |
+			// | RSLodIcons   | `mmiconslod`   | No Extension   | `bmp`         |
+			// | RSLodIcons   | `mmiconslod`   | No Extension   | `act`         |
+			// | RSLodSprites | `mmspriteslod` | No Extension   | `bmp`         |
+			// | RSLodMM8     | `mm8loclod`    | No Extension   | `bmp`         |
+			if
+			( (ver = RSLodHeroes ) and SameText(dotExt, '.wav') ) or
+			( (ver = RSLodGames  ) and SameText(dotExt, '.wav') ) or
+			( (ver = RSLodGames  ) and SameText(dotExt, '.smk') ) or
+			( (ver = RSLodBitmaps) and SameText(dotExt, '.bmp') ) or
+			( (ver = RSLodBitmaps) and SameText(dotExt, '.act') ) or
+			( (ver = RSLodIcons  ) and SameText(dotExt, '.bmp') ) or
+			( (ver = RSLodIcons  ) and SameText(dotExt, '.act') ) or
+			( (ver = RSLodSprites) and SameText(dotExt, '.bmp') ) or
+			( (ver = RSLodMM8    ) and SameText(dotExt, '.bmp') )
+			then
+				SetLength(fileName2, length(fileName2) - 4);
+
+			if (ver = RSLodHeroes) and SameText(dotExt, '.bmp') then
+			begin
+				SetLength(fileName2, length(fileName2) - 3);
+				fileName2 := fileName2 + 'pcx';
+			end;
+
+			Result := getIndexByExactFileName(fileName2, fFiles);
+		end;
+
+	except
+		on E : Exception do
+			WriteLn(E.Message);
+	end;
+
+end;
+
 procedure extractAll(const arch : TRSMMArchive; const folder : string);
 var
-	fileCountMinusOne : integer;
-	i : integer;
+	fileCountMinusOne, i : integer;
 begin
 	try
 		fileCountMinusOne := arch.RawFiles.Count - 1;
+		if fileCountMinusOne <> -1 then
+			RSCreateDir(folder);
 		for i := 0 to fileCountMinusOne do
 			arch.Extract(i, folder);
 	except
@@ -82,16 +148,14 @@ end;
 
 procedure extract;
 var
-	folder : string;
-	i : integer;
-	fileName : string;
+	folder, fileName : string;
+	fileIndex, i : integer;
 	arch : TRSMMArchive;
-	fileIndex : integer;
 begin
 	try
 		folder := ParamStr(3);
 		if folder = '' then
-			showError('You must specify a folder')
+			showError('You must specify a folder (use `.` for current folder)')
 		else
 		begin
 			arch := RSLoadMMArchive(archiveFile);
@@ -110,10 +174,10 @@ begin
 					if fileIndex = -1 then
 						WriteLn('Warning: file ' + fileName + ' is not found in the archive and therefore skipped')
 					else
+					begin
+						RSCreateDir(folder);
 						arch.Extract(fileIndex, folder);
-
-					if fileIndex <> -1 then
-						arch.Extract(fileIndex, folder);
+					end;
 				end;
 			end;
 		end;
@@ -125,12 +189,10 @@ end;
 
 procedure list;
 var
-	separator : string;
+	separator, fileNameListStr : string;
 	arch : TRSMMArchive;
 	fFiles : TRSMMFiles;
-	fileCountMinusOne : integer;
-	i : integer;
-	fileNameListStr : string;
+	fileCountMinusOne, i : integer;
 begin
 	try
 		separator := ParamStr(3);
@@ -155,11 +217,33 @@ begin
 	end;
 end;
 
+function getPalette(Sender: TRSLod; Bitmap: TBitmap) : integer; // similar to TRSLodEdit.NeedPalette()
+var
+	PalData : array[0..767] of Byte;
+	pal : integer;
+const
+	SEPaletteMustExist: string = 'Image must be in 256 colors mode and palette must be added to bitmaps.lod';
+	SEPaletteNotFound: string = 'Failed to find matching palette in [*.]bitmaps.lod';
+begin
+	Sender.LoadBitmapsLods('./');//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	if (Bitmap.PixelFormat <> pf8bit) or (Sender.BitmapsLods = nil) then
+		raise Exception.Create(SEPaletteMustExist);
+
+	RSWritePalette(@PalData, Bitmap.Palette); // convert to the same palette
+
+	pal := RSMMArchivesFindSamePalette(Sender.BitmapsLods, PalData);
+	if pal <> 0 then
+		Result := pal
+	else
+		raise Exception.Create(SEPaletteNotFound);
+end;
+
 procedure add;
 var
-	fileName : string;
+	fileName, dotExt : string;
 	arch : TRSMMArchive;
-	i : integer;
+	i, pal : integer;
+	ver : TRSLodVersion;
 begin
 	try
 		fileName := ParamStr(3);
@@ -168,14 +252,31 @@ begin
 		else
 		begin
 			arch := RSLoadMMArchive(archiveFile);
+			ver := TRSLod(arch).Version;
 
-			for i := 3 to ParamCount do
+			i := 3;
+			while i <= ParamCount do
 			begin
 				fileName := ParamStr(i);
-				if fileName <> '' then
+				if fileName <> '' then // has file to add
 				begin
-					arch.Add(fileName);
+					dotExt := AnsiRightStr(fileName, 4);
+					if SameText(dotExt, '.bmp') and ((ver = RSLodBitmaps) or (ver = RSLodSprites)) then // need pal
+					begin
+						if (i <= ParamCount - 2) and (SameText(ParamStr(i + 1), '/p')) then // pal specified
+						begin
+							pal := strtoint(ParamStr(i + 2));
+							i := i + 2;
+						end
+						else
+							pal := getPalette(TRSLod(arch), RSLoadBitmap(fileName));
+						WriteLn(IntToStr(pal));
+						arch.Add(fileName, pal);
+					end
+					else
+						arch.Add(fileName);
 				end;
+				i := i + 1; // increment no matter what
 			end;
 			arch.RawFiles.Rebuild();
 		end;
@@ -189,8 +290,7 @@ procedure delete;
 var
 	fileName : string;
 	arch : TRSMMArchive;
-	i : integer;
-	fileIndex : integer;
+	fileIndex, i : integer;
 begin
 	try
 		fileName := ParamStr(3);
@@ -222,8 +322,7 @@ end;
 
 procedure rename;
 var
-	fileName : string;
-	newFileName : string;
+	fileName, newFileName : string;
 	arch : TRSMMArchive;
 	fFiles : TRSMMFiles;
 	fileIndex : integer;
@@ -254,13 +353,10 @@ end;
 
 procedure create;
 var
-	arcFileType : string;
-	folder : string;
+	arcFileType, folder, ext, fileName : string;
 	arch : TRSMMArchive;
 	i : integer;
-	ext: string;
 	ver: TRSLodVersion;
-	fileName : string;
 
 const
 	vers: array[0..12] of TRSLodVersion = (RSLodHeroes, RSLodHeroes,
@@ -273,10 +369,10 @@ const
 
 begin
 	try
-		arcFileType := ParamStr(3);
+		arcFileType := AnsiLowerCase(ParamStr(3)); 
 		folder := ParamStr(4);
 		if (arcFileType = '') or (folder = '') then
-			showError('You must specify a type of your archive file that will be created and a folder')
+			showError('You must specify a type of your archive file that will be created and a folder (use `.` for current folder)')
 		else
 		begin
 			ver := vers[AnsiIndexStr(arcFileType, versStrs)];
@@ -285,16 +381,16 @@ begin
 			if SameText(ext, '.snd') then
 			begin
 				arch := TRSSnd.Create;
-				TRSSnd(arch).New(archiveFile, ver <> RSLodHeroes);
+				TRSSnd(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver <> RSLodHeroes);
 			end else
 			if SameText(ext, '.vid') then
 			begin
 				arch := TRSVid.Create;
-				TRSVid(arch).New(archiveFile, ver <> RSLodHeroes);
+				TRSVid(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver <> RSLodHeroes);
 			end else
 			begin
 				arch := TRSLod.Create;
-				TRSLod(arch).New(archiveFile, ver);
+				TRSLod(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver);
 			end;
 
 			for i := 5 to ParamCount do
@@ -316,11 +412,9 @@ end;
 
 procedure merge;
 var
-	arch : TRSMMArchive;
-	fFiles : TRSMMFiles;
+	arch, archB : TRSMMArchive;
+	fFiles, fFilesB : TRSMMFiles;
 	archiveFileB : string;
-	archB : TRSMMArchive;
-	fFilesB : TRSMMFiles;
 begin
 	try
 		archiveFileB := ParamStr(3);
@@ -396,7 +490,7 @@ begin
 			16: help;
 			17: help;
 			18: help;
-		else
+		else // -1 : not found in array
 			showError('Unknown method: ' + method);
 		end;
 	end;
