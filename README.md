@@ -9,7 +9,7 @@ Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([sour
 ## Usage Summary & Table of Contents
 
 <pre>
-mmarch {<a href="#extract">extract</a>|<a href="#list">list</a>|<a href="#add">add</a>|<a href="#delete">delete</a>|<a href="#rename">rename</a>|<a href="#create">create</a>|<a href="#merge">merge</a>|<a href="#optimize">optimize</a>|<a href="#help">help</a>} &lt;ARCHIVE_FILE&gt; [OTHER_ARGUMENTS]
+mmarch {<a href="#extract"><strong>e</strong>xtract</a>|<a href="#list"><strong>l</strong>ist</a>|<a href="#add"><strong>a</strong>dd</a>|<a href="#delete"><strong>d</strong>elete</a>|<a href="#rename"><strong>r</strong>ename</a>|<a href="#create"><strong>c</strong>reate</a>|<a href="#merge"><strong>m</strong>erge</a>|<a href="#optimize"><strong>o</strong>ptimize</a>|<a href="#help"><strong>h</strong>elp</a>} &lt;ARCHIVE_FILE&gt; [OTHER_ARGUMENTS]
 </pre>
 
 `<>`: required; `[]`: optional; `{a|b|c}`: required, choose one of them
@@ -17,7 +17,7 @@ mmarch {<a href="#extract">extract</a>|<a href="#list">list</a>|<a href="#add">a
 * Usage Notes: [`FOLDER`](#notes-on-folder), [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) and [Palette](#add-file-with-palette) arguments; [Other notes](#other-tips-and-notes)
 * For developer: [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files); [Compilation](#compilation); [Change Log](#change-log)
 
-## extract
+## `extract`
 
 ```
 mmarch extract <ARCHIVE_FILE> <FOLDER> [FILE_TO_EXTRACT_1] [FILE_TO_EXTRACT_2] [...]
@@ -51,7 +51,7 @@ mmarch extract events.lod "my folder/my subfolder"
 mmarch extract events.lod myfolder items.txt OUT04.EVT
 ```
 
-## list
+## `list`
 
 ```
 mmarch list <ARCHIVE_FILE> [SEPARATOR]
@@ -71,7 +71,7 @@ mmarch list events.lod
 mmarch list events.lod "|"
 ```
 
-## add
+## `add`
 
 ```
 mmarch add <ARCHIVE_FILE> <FILE_TO_ADD_1> [FILE_TO_ADD_2] [...]
@@ -91,7 +91,7 @@ If you need to force using a palette for a `.bmp` file in a `mmspriteslod` or `m
 mmarch add events.lod items.txt OUT04.EVT new.txt
 ```
 
-## delete
+## `delete`
 
 ```
 mmarch delete <ARCHIVE_FILE> <FILE_TO_DELETE_1> [FILE_TO_DELETE_2] [...]
@@ -107,7 +107,7 @@ Read "[§ Notes on `FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_)" section for more 
 mmarch delete events.lod items.txt OUT04.EVT
 ```
 
-## rename
+## `rename`
 
 ```
 mmarch rename <ARCHIVE_FILE> <OLD_FILE_NAME> <NEW_FILE_NAME>
@@ -121,7 +121,7 @@ Rename a file in the archive file.
 mmarch rename events.lod items.txt items_new.txt
 ```
 
-## create
+## `create`
 
 ```
 mmarch create <ARCHIVE_FILE> <ARCHIVE_FILE_TYPE> <FOLDER> [FILE_TO_ADD_1] [FILE_TO_ADD_2] [...]
@@ -160,7 +160,7 @@ If you need to force using a palette for a `.bmp` file in a `mmspriteslod` or `m
 mmarch create events_new.lod mmiconslod . items.txt OUT04.EVT new.txt
 ```
 
-## merge
+## `merge`
 
 ```
 mmarch merge <ARCHIVE_FILE> <ARCHIVE_FILE_2>
@@ -176,7 +176,7 @@ The first archive will change and the second will not. Resource files in the sec
 mmarch merge events.lod events2.lod
 ```
 
-## optimize
+## `optimize`
 
 ```
 mmarch optimize <ARCHIVE_FILE>
@@ -192,7 +192,7 @@ Note that when **mmarch** outputs an archive file (with `mmarch {add|delete|rena
 mmarch optimize events.lod
 ```
 
-## help
+## `help`
 
 ```
 mmarch help
@@ -319,7 +319,7 @@ How to compile the source of **mmarch**:
 
 ## Change Log
 * [2020-03-11] v1.0: initial release
-* [2020-03-15] v2.0: support palette; support `*.EXT`; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
+* [2020-03-16] v2.0: support palette; support `*.EXT`; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
 
 ## License
 
