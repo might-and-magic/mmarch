@@ -3,11 +3,13 @@ unit MMArchUnit;
 interface
 
 uses
-	SysUtils, StrUtils, RSLod, RSLodEdt, RSSysUtils, Graphics, RSGraphics, RSDefLod, RSQ;
+	Windows, SysUtils, StrUtils, Classes, RSLod, RSSysUtils, Graphics, RSGraphics, RSDefLod;
 
 type
+
 	MMArchSimple = class
 	private
+		arch: TRSMMArchive;
 		function getIndexByExactFileName(fileName: string): integer;
 		function verifyExtractedExt(fileIndex: integer; extractedExtToVerify: string): boolean;
 		function getInArchiveExt(extractedExt: string): string;
@@ -27,7 +29,8 @@ type
 
 		function list(separator: string = #13#10) : string;
 
-		// `ext` normally has dot `.`; `ext` of file without extension is ``; default to `*` meaning all files
+		// `ext` normally has dot `.` (`.txt`); `ext` of file without extension is ``; default to `*` meaning all files
+		// you should not use any other format here. Same applys to extractAll(), deleteAll() and addAll()
 		procedure extractAll(folder: string; ext: string = '*');
 		procedure extract(folder: string; fileToExtract: string);
 
@@ -38,7 +41,7 @@ type
 		procedure add(bmpFileToAdd: string; paletteIndex: integer); overload;
 		procedure add(fileToAdd: string); overload;
 
-		procedure new(archiveFileName: string; archiveFileType: string; folder: string);
+		procedure new(archiveFile: string; archiveFileType: string; folder: string);
 
 		procedure rename(oldFileName: string; newFileName: string);
 
@@ -49,14 +52,60 @@ type
 
 	OtherMmarchException = class(Exception);
 
-const
-	FileNotFound: string = 'File %s is not found in the archive';
-	FileNameEmpty: string = 'File name is empty';
+	function getAllFilesInFolder(path: string; ext: string = '*'): TStringList;
 
-var
-	arch: TRSMMArchive;
+resourcestring
+	      FileNotFound = 'File %s is not found in the archive';
+	     FileNameEmpty = 'File name is empty';
+	       DirNotFound = 'Directory %s is not found';
+	SEPaletteMustExist = 'Image must be in 256 colors mode and palette must be added to bitmaps.lod';
+	 SEPaletteNotFound = 'Failed to find matching palette in [*.]bitmaps.lod';
+
 
 implementation
+
+
+function getAllFilesInFolder(path: string; ext: string = '*'): TStringList;
+var
+	searchResult: TSearchRec;
+	fileMask: string;
+	currentDir: array[0 .. MAX_PATH] of char;
+begin
+	Result := TStringList.Create;
+
+	if ext = '*' then // all files
+		fileMask := '*'
+	else
+	begin
+		if (ext = '') then // without extension
+			fileMask := '*.'
+			// '*.' will match `.gitignore` (no stem) and `LICENSE` (no ext)
+			// because they are seen as `.gitignore.` and `LICENSE.`
+			// so we'll have to check against its real extension it later
+		else
+		begin
+			fileMask := '*' + ext;
+		end;
+	end;
+
+	GetCurrentDirectory(MAX_PATH, currentDir);
+	if not DirectoryExists(path) then
+		raise OtherMmarchException.CreateFmt(DirNotFound, [path]);
+
+	SetCurrentDirectory(PChar(path));
+	if findfirst(fileMask, faAnyFile, searchResult) = 0 then
+	begin
+		repeat
+			if FileExists(searchResult.Name) and (
+				(fileMask <> '*.') or
+				( (fileMask = '*.') and (ExtractFileExt(searchResult.Name) = '') )
+			) then
+				Result.Add(searchResult.Name);
+		until FindNext(searchResult) <> 0;
+		SysUtils.FindClose(searchResult);
+	end;
+	SetCurrentDirectory(currentDir);
+end;
 
 
 constructor MMArchSimple.load(archiveFile: string);
@@ -178,9 +227,6 @@ var
 	tLod: TRSLod;
 	PalData: array[0..767] of Byte;
 	pal: integer;
-const
-	SEPaletteMustExist: string = 'Image must be in 256 colors mode and palette must be added to bitmaps.lod';
-	SEPaletteNotFound: string = 'Failed to find matching palette in [*.]bitmaps.lod';
 begin
 	tLod := TRSLod(arch);
 	if (Bitmap.PixelFormat <> pf8bit) or (tLod.BitmapsLods = nil) then
@@ -282,6 +328,7 @@ begin
 			fFiles.Delete(i);
 		end;
 	end;
+	optimize;
 end;
 
 
@@ -299,14 +346,22 @@ end;
 
 
 procedure MMArchSimple.addAll(folder: string; ext: string = '*');
+var
+	fileNames: TStringList;
+	fileName: string;
 begin
-	
+	fileNames := getAllFilesInFolder(folder, ext);
+	for fileName in fileNames do
+	begin
+		add(IncludeTrailingPathDelimiter(folder) + fileName);
+	end;
 end;
 
 
 procedure MMArchSimple.add(bmpFileToAdd: string; paletteIndex: integer);
 begin
 	arch.Add(bmpFileToAdd, paletteIndex);
+	optimize;
 end;
 
 
@@ -328,10 +383,11 @@ begin
 	end
 	else
 		arch.Add(fileToAdd);
+		optimize;
 end;
 
 
-procedure MMArchSimple.new(archiveFileName: string; archiveFileType: string; folder: string);
+procedure MMArchSimple.new(archiveFile: string; archiveFileType: string; folder: string);
 var
 	ext: string;
 	ver: TRSLodVersion;
@@ -346,22 +402,22 @@ const
 		'mm8loclod', 'mm78gameslod', 'mm6gameslod', 'mm78save', 'mm6save');
 
 begin
-	ver := vers[AnsiIndexStr(archiveFileType, versStrs)];
-	ext := ExtractFileExt(archiveFileName);
+	ver := vers[AnsiIndexStr(AnsiLowerCase(archiveFileType), versStrs)];
+	ext := ExtractFileExt(archiveFile);
 
 	if SameText(ext, '.snd') then
 	begin
 		arch := TRSSnd.Create;
-		TRSSnd(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFileName, ver <> RSLodHeroes);
+		TRSSnd(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver <> RSLodHeroes);
 	end else
 	if SameText(ext, '.vid') then
 	begin
 		arch := TRSVid.Create;
-		TRSVid(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFileName, ver <> RSLodHeroes);
+		TRSVid(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver <> RSLodHeroes);
 	end else
 	begin
 		arch := TRSLod.Create;
-		TRSLod(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFileName, ver);
+		TRSLod(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver);
 	end;
 
 	optimize;
@@ -399,7 +455,7 @@ end;
 
 procedure MMArchSimple.optimize;
 begin
-	arch.RawFiles.Rebuild();
+	arch.RawFiles.Rebuild;
 end;
 
 
