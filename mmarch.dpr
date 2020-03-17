@@ -1,10 +1,19 @@
+// mmarch
+// Command line tool to handle Heroes 3 and Might and Magic 6, 7, 8
+// resource archive files (e.g. lod files). Based on GrayFace's MMArchive.
+// By Tom CHEN <tomchen.org@gmail.com> (tomchen.org)
+// MIT License
+// https://github.com/might-and-magic/mmarch
+
+
+
 program mmarch;
 
 {$R *.res}
 {$APPTYPE CONSOLE}
 
 uses
-	SysUtils, StrUtils, MMArchUnit;
+	SysUtils, StrUtils, Classes, MMArchUnit, RSQ;
 
 type
 	MissingParamException = class(Exception);
@@ -13,6 +22,8 @@ type
 const
 	MMARCHVERSION: string = '2.0';
 	MMARCHURL: string = 'https://github.com/might-and-magic/mmarch';
+	supportedExts: array[0..7] of string = ('.lod', '.pac', '.snd', '.vid', '.lwd', '.mm7', '.dod', '.mm6');
+	nameValSeparator: char = ':';
 
 var
 	method, archiveFile: string;
@@ -29,63 +40,96 @@ resourcestring
 	UnknownMethod                = 'Unknown method: %s';
 
 	HELPSTR_FirstLine       = 'mmarch Version %s Usage:';
-	HELPSTR_ReqOpt          = '(`%s`: required; `%s`: optional):';
+	HELPSTR_ReqOpt          = '(`%s`: required; `%s`: optional; `%s`: or):';
 	HELPSTR_Initial         = 'Initial letter of the first argument can be used (e.g. `%s` for `%s`)';
 	HELPSTR_CaseInsensitive = 'File names are case-insensitive';
+	HELPSTR_UseNotations    = 'You can use the following notations';
 	HELPSTR_CurrentFolder   = 'current folder';
 	HELPSTR_AllFiles        = 'all files';
 	HELPSTR_AllFilesWExt    = 'all files with specified extension';
 	HELPSTR_AllFilesWOExt   = 'all files without extension';
-	HELPSTR_ReadDetails     = 'Read %s for more details.';
+	HELPSTR_ReadDetails     = 'Read README.md file or go to the following page for more details and examples:';
+	HELPSTR_Colon           = ': ';
 
-	HELPPUNCTSTR_Colon      = ': ';
+	HELPSTR_BatchArchive      = '%s in `%s`';
+	HELPSTR_FilePath          = 'File path:';
+	HELPSTR_AllDirRecur       = 'all directories recursively';
+	HELPSTR_AnyOneDir         = 'any ONE directory';
 
-	HELPPARAMSTR_ARCHIVE_FILE      = 'ARCHIVE_FILE';
-	HELPPARAMSTR_FOLDER            = 'FOLDER';
-	HELPPARAMSTR_FILE_TO_EXTRACT_1 = 'FILE_TO_EXTRACT_1';
-	HELPPARAMSTR_FILE_TO_EXTRACT_2 = 'FILE_TO_EXTRACT_2';
-	HELPPARAMSTR_SEPARATOR         = 'SEPARATOR';
-	HELPPARAMSTR_FILE_TO_ADD_1     = 'FILE_TO_ADD_1';
-	HELPPARAMSTR_FILE_TO_ADD_2     = 'FILE_TO_ADD_2';
-	HELPPARAMSTR_FILE_TO_DELETE_1  = 'FILE_TO_DELETE_1';
-	HELPPARAMSTR_FILE_TO_DELETE_2  = 'FILE_TO_DELETE_2';
-	HELPPARAMSTR_OLD_FILE_NAME     = 'OLD_FILE_NAME';
-	HELPPARAMSTR_NEW_FILE_NAME     = 'NEW_FILE_NAME';
-	HELPPARAMSTR_ARCHIVE_FILE_TYPE = 'ARCHIVE_FILE_TYPE';
-	HELPPARAMSTR_ARCHIVE_FILE_2    = 'ARCHIVE_FILE_2';
+	HELPSTR_FileName          = 'File name at the end:';
+	HELPSTR_AllArchive        = 'all supported archive files';
+	HELPSTR_AllArchiveWExt    = 'all supported archive files with specified extension';
+	HELPSTR_AllArchiveWAnyExt = 'all supported archive files with any of specified extensions';
 
-	HELPPARAMSTR_FILE_TO_XX_X      = 'FILE_TO_XX_?';
+	HELPPRM_ARCHIVE_FILE      = 'ARCHIVE_FILE';
+	HELPPRM_FOLDER            = 'FOLDER';
+	HELPPRM_FILE_TO_EXTRACT_1 = 'FILE_TO_EXTRACT_1';
+	HELPPRM_FILE_TO_EXTRACT_2 = 'FILE_TO_EXTRACT_2';
+	HELPPRM_SEPARATOR         = 'SEPARATOR';
+	HELPPRM_FILE_TO_ADD_1     = 'FILE_TO_ADD_1';
+	HELPPRM_FILE_TO_ADD_2     = 'FILE_TO_ADD_2';
+	HELPPRM_FILE_TO_DELETE_1  = 'FILE_TO_DELETE_1';
+	HELPPRM_FILE_TO_DELETE_2  = 'FILE_TO_DELETE_2';
+	HELPPRM_OLD_FILE_NAME     = 'OLD_FILE_NAME';
+	HELPPRM_NEW_FILE_NAME     = 'NEW_FILE_NAME';
+	HELPPRM_ARCHIVE_FILE_TYPE = 'ARCHIVE_FILE_TYPE';
+	HELPPRM_ARCHIVE_FILE_2    = 'ARCHIVE_FILE_2';
+
+	HELPPRM_FILE_TO_XX_X      = 'FILE_TO_XX_?';
 
 
-procedure help;
+procedure help(short: boolean = false);
 begin
 	WriteLn(format(HELPSTR_FirstLine, [MMARCHVERSION]));
 	WriteLn;
-	WriteLn('mmarch extract <' + HELPPARAMSTR_ARCHIVE_FILE + '> <' + HELPPARAMSTR_FOLDER + '> [' + HELPPARAMSTR_FILE_TO_EXTRACT_1 + '] [' + HELPPARAMSTR_FILE_TO_EXTRACT_2 + '] [...]');
-	WriteLn('mmarch list <' + HELPPARAMSTR_ARCHIVE_FILE + '> [' + HELPPARAMSTR_SEPARATOR + ']');
-	WriteLn('mmarch add <' + HELPPARAMSTR_ARCHIVE_FILE + '> <' + HELPPARAMSTR_FILE_TO_ADD_1 + '> [' + HELPPARAMSTR_FILE_TO_ADD_2 + '] [...]');
-	WriteLn('mmarch delete <' + HELPPARAMSTR_ARCHIVE_FILE + '> <' + HELPPARAMSTR_FILE_TO_DELETE_1 + '> [' + HELPPARAMSTR_FILE_TO_DELETE_2 + '] [...]');
-	WriteLn('mmarch rename <' + HELPPARAMSTR_ARCHIVE_FILE + '> <' + HELPPARAMSTR_OLD_FILE_NAME + '> <' + HELPPARAMSTR_NEW_FILE_NAME + '>');
-	WriteLn('mmarch create <' + HELPPARAMSTR_ARCHIVE_FILE + '> <' + HELPPARAMSTR_ARCHIVE_FILE_TYPE + '> <' + HELPPARAMSTR_FOLDER + '> [' + HELPPARAMSTR_FILE_TO_ADD_1 + '] [' + HELPPARAMSTR_FILE_TO_ADD_2 + '] [...]');
-	WriteLn('mmarch merge <' + HELPPARAMSTR_ARCHIVE_FILE + '> <' + HELPPARAMSTR_ARCHIVE_FILE_2 + '>');
-	WriteLn('mmarch optimize <' + HELPPARAMSTR_ARCHIVE_FILE + '>');
+	WriteLn('mmarch extract <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_FOLDER + '> [' + HELPPRM_FILE_TO_EXTRACT_1 + '] [' + HELPPRM_FILE_TO_EXTRACT_2 + '] [...]');
+	WriteLn('mmarch list <' + HELPPRM_ARCHIVE_FILE + '> [' + HELPPRM_SEPARATOR + ']');
+	WriteLn('mmarch add <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_FILE_TO_ADD_1 + '> [' + HELPPRM_FILE_TO_ADD_2 + '] [...]');
+	WriteLn('mmarch delete <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_FILE_TO_DELETE_1 + '> [' + HELPPRM_FILE_TO_DELETE_2 + '] [...]');
+	WriteLn('mmarch rename <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_OLD_FILE_NAME + '> <' + HELPPRM_NEW_FILE_NAME + '>');
+	WriteLn('mmarch create <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_ARCHIVE_FILE_TYPE + '> <' + HELPPRM_FOLDER + '> [' + HELPPRM_FILE_TO_ADD_1 + '] [' + HELPPRM_FILE_TO_ADD_2 + '] [...]');
+	WriteLn('mmarch merge <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_ARCHIVE_FILE_2 + '>');
+	WriteLn('mmarch optimize <' + HELPPRM_ARCHIVE_FILE + '>');
 	WriteLn('mmarch help');
-	WriteLn;
-	WriteLn(format(HELPSTR_ReqOpt, ['<>', '[]']));
-	WriteLn;
-	WriteLn('- ' + format(HELPSTR_Initial, ['e', 'extract']));
-	WriteLn('- ' + HELPSTR_CaseInsensitive);
-	WriteLn;
-	WriteLn(HELPPARAMSTR_FOLDER + HELPPUNCTSTR_Colon);
-	WriteLn('            .    ' + HELPSTR_CurrentFolder);
-	WriteLn;
-	WriteLn(HELPPARAMSTR_FILE_TO_XX_X + HELPPUNCTSTR_Colon);
-	WriteLn('            *    ' + HELPSTR_AllFiles);
-	WriteLn('          *.*    ' + HELPSTR_AllFiles);
-	WriteLn('        *.txt    ' + HELPSTR_AllFilesWExt);
-	WriteLn('           *.    ' + HELPSTR_AllFilesWOExt);
-	WriteLn;
-	WriteLn(format(HELPSTR_ReadDetails, [MMARCHURL]));
+
+	if not short then
+	begin
+		WriteLn;
+		WriteLn(format(HELPSTR_ReqOpt, ['<>', '[]', '|']));
+		WriteLn;
+		WriteLn('- ' + format(HELPSTR_Initial, ['e', 'extract']));
+		WriteLn('- ' + HELPSTR_CaseInsensitive);
+		WriteLn('- ' + HELPSTR_UseNotations);
+		WriteLn;
+		WriteLn(HELPPRM_FOLDER + HELPSTR_Colon);
+		WriteLn('            .    ' + HELPSTR_CurrentFolder);
+		WriteLn;
+		WriteLn(HELPPRM_FILE_TO_XX_X + HELPSTR_Colon);
+		WriteLn('*.*   |     *    ' + HELPSTR_AllFiles);
+		WriteLn('        *.txt    ' + HELPSTR_AllFilesWExt);
+		WriteLn('           *.    ' + HELPSTR_AllFilesWOExt);
+		WriteLn;
+		WriteLn(format(HELPSTR_BatchArchive, [HELPPRM_ARCHIVE_FILE, 'mmarch extract']) + HELPSTR_Colon);
+		WriteLn(HELPSTR_FilePath);
+		WriteLn('           **    ' + HELPSTR_AllDirRecur);
+		WriteLn('            *    ' + HELPSTR_AnyOneDir);
+		WriteLn(HELPSTR_FileName);
+		WriteLn('*.*   |     *    ' + HELPSTR_AllArchive);
+		WriteLn('        *.lod    ' + HELPSTR_AllArchiveWExt);
+		WriteLn('*.lod|lwd|vid    ' + HELPSTR_AllArchiveWAnyExt);
+		WriteLn;
+		WriteLn(HELPSTR_ReadDetails);
+		WriteLn(MMARCHURL);
+	end;
+end;
+
+
+procedure Split(Delimiter: Char; Str: string; ListOfStrings: TStrings) ;
+begin
+	ListOfStrings.Clear;
+	ListOfStrings.Delimiter       := Delimiter;
+	ListOfStrings.StrictDelimiter := True;
+	ListOfStrings.DelimitedText   := Str;
 end;
 
 
@@ -100,7 +144,17 @@ begin
 end;
 
 
-function wildCardFileNameToExt(fileName: string): string;
+function stringsToStringList(const Strings: array of string): TStringList;
+var
+	i: Integer;
+begin
+	Result := TStringList.Create;
+	for i := low(Strings) to high(Strings) do
+		Result.Add(Strings[i]);
+end;
+
+
+function wildcardFileNameToExt(fileName: string): string;
 begin
 	if (fileName = '*') or (fileName = '*.*') then // all files
 		Result := '*'
@@ -114,34 +168,171 @@ begin
 end;
 
 
+function fileNameToExtList(fileName: string): TStringList;
+var
+	ext: string;
+	i: integer;
+	ResultTemp: TStringList;
+begin
+	ext := ExtractFileExt(fileName);
+	if (fileName = '*') or (fileName = '*.*') then
+		Result := stringsToStringList(supportedExts)
+	else
+	begin
+		Result := TStringList.Create;
+		if Pos('|', archiveFile) > 0 then
+		begin
+			ResultTemp := TStringList.Create;
+			Split('|', trimCharLeft(ext, '.'), ResultTemp);
+			for i := 0 to ResultTemp.Count - 1 do
+			begin
+				ResultTemp.ValueFromIndex[i] := '.' + AnsiLowerCase(ResultTemp.ValueFromIndex[i]);
+				if MatchStr(ResultTemp.ValueFromIndex[i], supportedExts) then
+				Result.Add(ResultTemp.ValueFromIndex[i]);
+			end;
+			ResultTemp.Free;
+		end
+		else
+			Result.Add(ext);
+	end;
+end;
+
+
+procedure addAllExtFilesToFileList(path: string; extList: TStringList; var fileList: TStringList);
+var
+	ext, fileName: string;
+begin
+	for ext in extList do
+		for fileName in getAllFilesInFolder(path, ext) do
+			fileList.Add(fileName + nameValSeparator + path);
+end;
+
+
+procedure addFilesInAllDirsToFileList(path: string; extList: TStringList; recursive: boolean; var fileList: TStringList);
+var
+	dirListTemp: TStringList;
+	dir: string;
+begin
+	if recursive = true then
+		addAllExtFilesToFileList(path, extList, fileList);
+
+	dirListTemp := getAllFilesInFolder(path, '<DIR>');
+
+	for dir in dirListTemp do
+		if recursive = true then
+		begin
+			writeln('recur');
+			writeln(dir);
+			addFilesInAllDirsToFileList(withTrailingSlash(path) + dir, extList, true, fileList);
+		end
+		else
+		begin
+			writeln('nonrecur');
+			writeln(dir);
+			addAllExtFilesToFileList(dir, extList, fileList);
+		end;
+
+	dirListTemp.Free;
+end;
+
+
+function wildcardArchiveNameToArchiveList(archiveName: string): TStringList;
+var
+	path, fileName, pathRightPart, pathTemp: string;
+	extList: TStringList;
+const
+	supportedExts: array[0..7] of string = ('.lod', '.pac', '.snd', '.vid', '.lwd', '.mm7', '.dod', '.mm6');
+begin
+
+	path := ExtractFilePath(archiveName);
+	fileName := ExtractFileName(archiveName);
+
+	extList := fileNameToExtList(fileName);
+
+	Result := TStringList.Create;
+	Result.Clear;
+	Result.NameValueSeparator := nameValSeparator;
+
+	pathRightPart := copy(path, length(path)-2, 3);
+	if pathRightPart = '**/' then
+	begin
+		pathTemp := copy(path, 1, length(path)-3); // part of path where pathRightPart is substracted
+		addFilesInAllDirsToFileList(pathTemp, extList, true, Result);
+	end
+	else
+	begin
+		pathRightPart := copy(path, length(path)-1, 2);
+		if pathRightPart = '*/' then
+		begin
+			pathTemp := copy(path, 1, length(path)-2);
+			addFilesInAllDirsToFileList(pathTemp, extList, false, Result);
+		end
+		else
+			addAllExtFilesToFileList(path, extList, Result);
+	end;
+	extList.Free;
+end;
+
+
 procedure extract;
 var
 	archSimp: MMArchSimple;
-	folder, fileName: string;
-	i: integer;
+	extractToBaseFolder, extractToFolder, archiveFileFolder, fileName: string;
+	i, j: integer;
+	archiveFileList: TStringList; // archive file name - archive file path pair
 begin
 
-	folder := ParamStr(3);
-	if folder = '' then
+	extractToBaseFolder := ParamStr(3);
+	if extractToBaseFolder = '' then
 		raise MissingParamException.Create(NeedFolder);
+	extractToFolder := extractToBaseFolder;
 
-	archSimp := MMArchSimple.load(archiveFile);
-
-	fileName := ParamStr(4);
-	if fileName = '' then // FILE_TO_EXTRACT_1 is empty, extract all
-		archSimp.extractAll(folder);
-
-	for i := 4 to ParamCount do
+	if Pos('*', archiveFile) > 0 then
+		archiveFileList := wildcardArchiveNameToArchiveList(archiveFile)
+	else
 	begin
-		fileName := ParamStr(i);
-		if fileName <> '' then
+		archiveFileList := TStringList.Create;
+		archiveFileList.Clear;
+		archiveFileList.NameValueSeparator := nameValSeparator;
+		archiveFileList.Add(archiveFile + nameValSeparator + '.');
+	end;
+
+	for j := 0 to archiveFileList.Count - 1 do
+	begin
+		archiveFileFolder := archiveFileList.ValueFromIndex[j];
+		archSimp := MMArchSimple.load(withTrailingSlash(archiveFileFolder) + archiveFileList.Names[j]);
+		fileName := ParamStr(4);
+
+		if Pos('*', archiveFile) > 0 then
+			extractToFolder := withTrailingSlash(extractToBaseFolder)
+			+ withTrailingSlash(archiveFileFolder)
+			+ AnsiReplaceStr(archiveFileList.Names[j], '.', '_');
+
+		if fileName = '' then // FILE_TO_EXTRACT_1 is empty, extract all
+			archSimp.extractAll(extractToFolder);
+
+		for i := 4 to ParamCount do
 		begin
-			if Pos('*', fileName) > 0 then
-				archSimp.extractAll(folder, wildCardFileNameToExt(fileName))
-			else
-				archSimp.extract(folder, fileName);
+			fileName := ParamStr(i);
+			if fileName <> '' then
+			begin
+				try // the individual file will be skipped if it gets an OtherMmarchException (FileNotFound)
+					if Pos('*', fileName) > 0 then
+						archSimp.extractAll(extractToFolder, wildcardFileNameToExt(fileName))
+					else
+						archSimp.extract(extractToFolder, fileName);
+				except
+					on E: OtherMmarchException do
+						WriteLn('Error: ' + E.Message);
+					on E: Exception do
+						WriteLn(E.Message);
+				end;
+			end;
 		end;
 	end;
+
+	archiveFileList.Free;
+
 end;
 
 
@@ -171,25 +362,30 @@ begin
 		filePath := ParamStr(i);
 		if filePath <> '' then // has file to add
 		begin
+			try // the individual file will be skipped if it gets an OtherMmarchException (FileNotFound)
+				folder := ExtractFilePath(filePath);
+				fileName := ExtractFileName(filePath);
+				ext := ExtractFileName(fileName);
 
-			folder := ExtractFilePath(filePath);
-			fileName := ExtractFileName(filePath);
-			ext := ExtractFileName(fileName);
-
-			if Pos('*', fileName) > 0 then
-				archSimp.addAll(folder, wildCardFileNameToExt(fileName))
-			else
-			begin
-				if (i <= ParamCount - 2) and (SameText(ParamStr(i + 1), '/p')) then // pal specified
-				begin
-					paletteIndex := strtoint(ParamStr(i + 2));
-					archSimp.add(filePath, paletteIndex);
-					i := i + 2;
-				end
+				if Pos('*', fileName) > 0 then
+					archSimp.addAll(folder, wildcardFileNameToExt(fileName))
 				else
-					archSimp.add(filePath);
+				begin
+					if (i <= ParamCount - 2) and (SameText(ParamStr(i + 1), '/p')) then // pal specified
+					begin
+						paletteIndex := strtoint(ParamStr(i + 2));
+						archSimp.add(filePath, paletteIndex);
+						i := i + 2;
+					end
+					else
+						archSimp.add(filePath);
+				end;
+			except
+				on E: OtherMmarchException do
+					WriteLn('Error: ' + E.Message);
+				on E: Exception do
+					WriteLn(E.Message);
 			end;
-
 		end;
 		i := i + 1; // increment no matter what
 	end;
@@ -224,10 +420,17 @@ begin
 		fileName := ParamStr(i);
 		if fileName <> '' then
 		begin
-			if Pos('*', fileName) > 0 then
-				archSimp.deleteAll(wildCardFileNameToExt(fileName))
-			else
-				archSimp.delete(fileName);
+			try // the individual file will be skipped if it gets an OtherMmarchException (FileNotFound)
+				if Pos('*', fileName) > 0 then
+					archSimp.deleteAll(wildcardFileNameToExt(fileName))
+				else
+					archSimp.delete(fileName);
+			except
+				on E: OtherMmarchException do
+					WriteLn('Error: ' + E.Message);
+				on E: Exception do
+					WriteLn(E.Message);
+			end;
 		end;
 	end;
 end;
@@ -290,6 +493,18 @@ begin
 
 	try
 
+// writeln(ExtractFilePath('./*.*'));
+// writeln(ExtractFilePath('./*.lod'));
+// writeln(ExtractFilePath('*.*'));
+// writeln(ExtractFilePath('*.lod'));
+// writeln(ExtractFilePath('folder/*.lod|mm6|mm7'));
+// writeln(ExtractFilePath('folder/*.lod|mm6|mm7'));
+// writeln(ExtractFilePath('folder/*.*'));
+// writeln(ExtractFilePath('folder/*.*'));
+// writeln(ExtractFilePath('folder/subfolder/*.lod'));
+// writeln(ExtractFilePath('folder/*/*.lod'));
+// writeln(ExtractFilePath('folder/**/*.lod'));
+
 		method := trimCharLeft(ParamStr(1), '-');
 		methodNumber := AnsiIndexStr(method, ['extract', 'e', 'list', 'l',
 			'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm',
@@ -318,9 +533,7 @@ begin
 		begin
 			WriteLn('Error: ' + E.Message);
 			WriteLn;
-			WriteLn('----------------------------------------');
-			WriteLn;
-			help;
+			help(true);
 		end;
 		on E: OtherMmarchException do
 			WriteLn('Error: ' + E.Message);

@@ -1,9 +1,19 @@
+// MMArchUnit unit and MMArchSimple class
+// Part of mmarch
+// Command line tool to handle Heroes 3 and Might and Magic 6, 7, 8
+// resource archive files (e.g. lod files). Based on GrayFace's MMArchive.
+// By Tom CHEN <tomchen.org@gmail.com> (tomchen.org)
+// MIT License
+// https://github.com/might-and-magic/mmarch
+
+
+
 unit MMArchUnit;
 
 interface
 
 uses
-	Windows, SysUtils, StrUtils, Classes, RSLod, RSSysUtils, Graphics, RSGraphics, RSDefLod;
+	Windows, SysUtils, StrUtils, Classes, RSLod, RSSysUtils, Graphics, RSGraphics, RSDefLod, RSQ;
 
 type
 
@@ -29,8 +39,14 @@ type
 
 		function list(separator: string = #13#10) : string;
 
+		// `ext` parameter in extractAll(), deleteAll() and addAll()
+		// differs from https://github.com/might-and-magic/mmarch#notes-on-file_to_xxxx_
 		// `ext` normally has dot `.` (`.txt`); `ext` of file without extension is ``; default to `*` meaning all files
-		// you should not use any other format here. Same applys to extractAll(), deleteAll() and addAll()
+		// you should not use any other format here
+
+		// `folder` parameter in extractAll(), extract() and addAll() generally uses
+		// the same rule here https://github.com/might-and-magic/mmarch#notes-on-folder
+
 		procedure extractAll(folder: string; ext: string = '*');
 		procedure extract(folder: string; fileToExtract: string);
 
@@ -54,6 +70,8 @@ type
 
 	function getAllFilesInFolder(path: string; ext: string = '*'): TStringList;
 
+	function withTrailingSlash(path: string): string;
+
 resourcestring
 	      FileNotFound = 'File %s is not found in the archive';
 	     FileNameEmpty = 'File name is empty';
@@ -66,14 +84,19 @@ implementation
 
 
 function getAllFilesInFolder(path: string; ext: string = '*'): TStringList;
+// ext could be '<DIR>' which means directory, otherwise it will search for files
 var
+	isDir: boolean;
 	searchResult: TSearchRec;
 	fileMask: string;
+	attr: integer;
 	currentDir: array[0 .. MAX_PATH] of char;
 begin
 	Result := TStringList.Create;
 
-	if ext = '*' then // all files
+	isDir := SameText(ext, '<DIR>');
+
+	if (ext = '*') or isDir then // all files or all directory
 		fileMask := '*'
 	else
 	begin
@@ -88,23 +111,50 @@ begin
 		end;
 	end;
 
+	if isDir then
+		attr := faDirectory
+	else
+		attr := faAnyFile;
+
+	if path = '' then // DirectoryExists('') = false, so we need this
+		path := '.';
+
 	GetCurrentDirectory(MAX_PATH, currentDir);
 	if not DirectoryExists(path) then
 		raise OtherMmarchException.CreateFmt(DirNotFound, [path]);
 
 	SetCurrentDirectory(PChar(path));
-	if findfirst(fileMask, faAnyFile, searchResult) = 0 then
+
+	if findfirst(fileMask, attr, searchResult) = 0 then
 	begin
 		repeat
-			if FileExists(searchResult.Name) and (
-				(fileMask <> '*.') or
-				( (fileMask = '*.') and (ExtractFileExt(searchResult.Name) = '') )
-			) then
+			if (
+				(not isDir) and
+				FileExists(searchResult.Name) and (
+					(fileMask <> '*.') or
+					( (fileMask = '*.') and (ExtractFileExt(searchResult.Name) = '') )
+				)
+			) or (
+				isDir and
+				( (searchResult.attr and faDirectory) = faDirectory ) and
+				(searchResult.Name <> '.') and
+				(searchResult.Name <> '..')
+			)
+			then
 				Result.Add(searchResult.Name);
 		until FindNext(searchResult) <> 0;
 		SysUtils.FindClose(searchResult);
 	end;
 	SetCurrentDirectory(currentDir);
+end;
+
+
+function withTrailingSlash(path: string): string;
+begin
+	if path <> '' then
+		Result := IncludeTrailingPathDelimiter(path)
+	else
+		Result := path;
 end;
 
 
@@ -353,8 +403,9 @@ begin
 	fileNames := getAllFilesInFolder(folder, ext);
 	for fileName in fileNames do
 	begin
-		add(IncludeTrailingPathDelimiter(folder) + fileName);
+		add(withTrailingSlash(folder) + fileName);
 	end;
+	fileNames.Free;
 end;
 
 
@@ -408,16 +459,16 @@ begin
 	if SameText(ext, '.snd') then
 	begin
 		arch := TRSSnd.Create;
-		TRSSnd(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver <> RSLodHeroes);
+		TRSSnd(arch).New(withTrailingSlash(folder) + archiveFile, ver <> RSLodHeroes);
 	end else
 	if SameText(ext, '.vid') then
 	begin
 		arch := TRSVid.Create;
-		TRSVid(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver <> RSLodHeroes);
+		TRSVid(arch).New(withTrailingSlash(folder) + archiveFile, ver <> RSLodHeroes);
 	end else
 	begin
 		arch := TRSLod.Create;
-		TRSLod(arch).New(IncludeTrailingPathDelimiter(folder) + archiveFile, ver);
+		TRSLod(arch).New(withTrailingSlash(folder) + archiveFile, ver);
 	end;
 
 	optimize;

@@ -1,10 +1,10 @@
 # [mmarch](https://github.com/might-and-magic/mmarch)
 
-Command line tool to handle (extract, replace resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files).
+Command line tool to handle (extract, replace resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows.
 
 [Download mmarch v2.0](https://github.com/might-and-magic/mmarch/releases/download/v2.0/mmarch.zip)
 
-Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([source](https://github.com/GrayFace/Misc/)) (mmarch is actually kind of a wrapper of MMArchive). If you need a graphical user interface tool, use MMArchive.
+Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([repo](https://github.com/GrayFace/Misc/)) (mmarch is actually kind of a wrapper of MMArchive). If you need a graphical user interface tool, use MMArchive.
 
 ## Usage Summary & Table of Contents
 
@@ -14,8 +14,8 @@ mmarch {<a href="#extract"><strong>e</strong>xtract</a>|<a href="#list"><strong>
 
 `<>`: required; `[]`: optional; `{a|b|c}`: required, choose one of them
 
-* Usage Notes: [`FOLDER`](#notes-on-folder), [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) and [Palette](#add-file-with-palette) arguments; [Other notes](#other-tips-and-notes)
-* For developer: [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files); [Compilation](#compilation); [Change Log](#change-log)
+* Usage Notes: | [`FOLDER`](#notes-on-folder) | [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) | [Batch archive extraction](#batch-archive-extraction) | [Palette](#add-file-with-palette) arguments | [Other notes](#other-tips-and-notes)
+* For developer: | [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files) | [Compilation](#compilation) | [Change Log](#change-log)
 
 ## `extract`
 
@@ -24,6 +24,8 @@ mmarch extract <ARCHIVE_FILE> <FOLDER> [FILE_TO_EXTRACT_1] [FILE_TO_EXTRACT_2] [
 ```
 
 Extract (i.e. unpack) file(s) from the archive file (i.e. resource package file, typically .lod files).
+
+Read "[§ Batch archive extraction](#batch-archive-extraction)" section to learn how to use wildcard for `<ARCHIVE_FILE>` in `mmarch extract` command to extract all archives in specified folder(s) with just one command.
 
 If no `[FILE_TO_EXTRACT_?]` is specified, it will extract all files in the archive file.
 
@@ -50,6 +52,8 @@ mmarch extract events.lod "my folder/my subfolder"
 ```
 mmarch extract events.lod myfolder items.txt OUT04.EVT
 ```
+
+Batch archive extraction examples see: "[§ Batch archive extraction](#batch-archive-extraction)" section.
 
 ## `list`
 
@@ -204,11 +208,12 @@ Display help information.
 
 The "Notes on `FOLDER`" applys to the argument representing a **folder path**  in <code>mmarch <a href="#extract">extract</a></code> and <code>mmarch <a href="#create">create</a></code>.
 
+* Folder path cannot be empty when it is required
 * If folder path contains space (` `), use double quote (`""`) to enclose the folder path
 * Path without a leading slash, or with a leading `./`: **relative path**
   * `.`: **current directory**
-* A leading slash `/`: **absolute path** (the root being `C:\` or `D:\` or ...)
-  * Empty string `""`: the root (`C:\` or `D:\` or ...)
+  * `..`: parent directory of the current directory (use with **CAUTION!**)
+* A leading slash `/`: **absolute path** (the root being `C:\` or `D:\` or ...) (use with **CAUTION!**)
 * A trailing slash is optional. Same effect with or without it.
 * Slash (`/`) and backslash (`\`) have the same effect.
 
@@ -216,10 +221,43 @@ The "Notes on `FOLDER`" applys to the argument representing a **folder path**  i
 
 The "Notes on `FILE_TO_XXXX_?`" applys to the argument representing a **file path** in <code>mmarch <a href="#extract">extract</a></code>, <code>mmarch <a href="#add">add</a></code>, <code>mmarch <a href="#delete">delete</a></code> and <code>mmarch <a href="#create">create</a></code>.
 
-* `*` and `*.*`: **all the files**
+* `*` or `*.*`: **all the files**
 * `*.EXT` (e.g. `*.txt`): all the files with the specified **extension**
 * `*.`: all the files **without extension**
 * You can add directory path before the aforementioned wildcard character. Similar rules for folder path apply to the file path (incl. the double quote, relative and absolute path, slash usage)
+
+## Batch archive extraction
+
+You can use wildcard for `<ARCHIVE_FILE>` in `mmarch extract` command to extract all archives in specified folder(s) with just one command.
+
+* File path in `<ARCHIVE_FILE>`:
+  * `**`:  zero or more directories (i.e. the current directory and all its subdirectories, **recursively**)
+  * `*`: any **ONE** directory
+  * Read the section "[§ Notes on `FOLDER`](#notes-on-folder)" above for **relative path** and **absolute path** (absolute path is **NOT recommended at all!**)
+* File name at the end of `<ARCHIVE_FILE>`:
+  * `*` or `*.*`: all the **supported** archive files (`.lod`, `.pac`, `.snd`, `.vid`, `.lwd`, `.mm7`, `.dod` & `.mm6`)
+  * `*.EXT` (e.g. `*.lod`): all the **supported** archive files with the specified **extension** (`a.bitmaps.lod`'s extension is `.lod`, not `.bitmaps.lod`)
+  * `*.EXT1|EXT2|EXT3...` (e.g. `*.lod|lwd|vid`): all the supported archive files with any of the specified extensions
+
+**Examples:**
+
+```
+mmarch extract **/* resource_folder
+```
+
+The command above can extract all the resource files in all the supported archive files in current directory and its subdirectories. The resources will be placed in an auto-named (e.g. `icons_lod/` for `icons.lod`) subdirectory (or sub-subdirectory depending on whether the archive is in a subdirectory) in `resource_folder/`.
+
+```
+mmarch extract data/*.lod . *.txt
+```
+
+The command above can extract all `.txt` resource files in all `.lod` archive files in `data/` directory. The resources will be placed in an auto-named subdirectory in current directory (current directory = `.`).
+
+```
+mmarch extract */*.lod|lwd ../resource_folder
+```
+
+The command above can extract all the resource files in all `.lod` and `.lwd` archive files in any first level subdirectories of the current directory. The resources will be placed in an auto-named subdirectory in `resource_folder/` that belongs to the parent directory of the current directory.
 
 ## Add file with palette
 
@@ -319,7 +357,7 @@ How to compile the source of **mmarch**:
 
 ## Change Log
 * [2020-03-11] v1.0: initial release
-* [2020-03-16] v2.0: support palette; support `*.EXT`; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
+* [2020-03-17] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
 
 ## License
 
