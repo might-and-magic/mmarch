@@ -231,7 +231,7 @@ The "Notes on `FILE_TO_XXXX_?`" applys to the argument representing a **file pat
 You can use wildcard for `<ARCHIVE_FILE>` in `mmarch extract` command to extract all archives in specified folder(s) with just one command.
 
 * File path in `<ARCHIVE_FILE>`:
-  * `**`:  zero or more directories (i.e. the current directory and all its subdirectories, **recursively**, non-hidden)
+  * `**`:  zero or more directories (i.e. the current directory and all its non-hidden subdirectories, **recursively**)
   * `*`: any **ONE** directory
   * Read the section "[§ Notes on `FOLDER`](#notes-on-folder)" above for **relative path** and **absolute path** (absolute path is **NOT recommended at all!**)
 * File name at the end of `<ARCHIVE_FILE>`:
@@ -328,7 +328,7 @@ For some archive format, some files have different file extensions in the archiv
 
 Official Might and Magic VI and VII has some sprites with incorrect palette:
 
-* MM6's bat images, stored in data/SPRITES.LOD as `BAT****` files, have incorrect palette: their palette should be 156 instead of 422 (pal422 exists in BITMAPS.LOD but is unrelated).
+* MM6's bat (yes, the monster that allegedly caused the coronavirus pandemic) images, stored in data/SPRITES.LOD as `BAT****` files, have incorrect palette: their palette should be 156 instead of 422 (pal422 exists in BITMAPS.LOD but is unrelated). However, it seems neither 422 nor 156 is correct for some of the bat bitmaps, both mmarch and MMArchive can't retrieve their correct palette.
 * MM7's "swptree" images, stored in data/SPRITES.LOD as `swptree*` files, have incorrect palette: their palette should be 120 instead of 940 (pal940 doesn't exist in BITMAPS.LOD at all).
 
 **mmarch** will not fix their problem and will skip these sprite bitmaps (though GrayFace's MMArchive can fix them). However, you may find these sprites bitmap files well extracted with correct palette in [`fixedsprites.zip` in the repo](https://github.com/might-and-magic/mmarch/blob/master/fixedsprites.zip).
