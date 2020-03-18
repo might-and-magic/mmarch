@@ -63,7 +63,7 @@ mmarch list <ARCHIVE_FILE> [SEPARATOR]
 
 List all file names in the archive file.
 
-`[SEPARATOR]` is a string that separates the file names, use double quote (`""`) to enclose the separator. By default (when `[SEPARATOR]` is not specified), windows newline (CRLF) will be used as the separator, which means it will output one file name per line.
+`[SEPARATOR]` is a string that separates the file names, use double quotes (`""`) to enclose the separator. By default (when `[SEPARATOR]` is not specified), windows newline (CRLF) will be used as the separator, which means it will output one file name per line.
 
 **Examples:**
 
@@ -209,7 +209,7 @@ Display help information.
 The "Notes on `FOLDER`" applys to the argument representing a **folder path**  in <code>mmarch <a href="#extract">extract</a></code> and <code>mmarch <a href="#create">create</a></code>.
 
 * Folder path cannot be empty when it is required
-* If folder path contains space (` `), use double quote (`""`) to enclose the folder path
+* If folder path contains space (` `), use double quotes (`""`) to enclose the folder path
 * Path without a leading slash, or with a leading `./`: **relative path**
   * `.`: **current directory**
   * `..`: parent directory of the current directory (use with **CAUTION!**)
@@ -224,20 +224,22 @@ The "Notes on `FILE_TO_XXXX_?`" applys to the argument representing a **file pat
 * `*` or `*.*`: **all the files**
 * `*.EXT` (e.g. `*.txt`): all the files with the specified **extension**
 * `*.`: all the files **without extension**
-* You can add directory path before the aforementioned wildcard character. Similar rules for folder path apply to the file path (incl. the double quote, relative and absolute path, slash usage)
+* You can add directory path before the aforementioned wildcard character. Similar rules for folder path apply to the file path (incl. the double quotes, relative and absolute path, slash usage)
 
 ## Batch archive extraction
 
 You can use wildcard for `<ARCHIVE_FILE>` in `mmarch extract` command to extract all archives in specified folder(s) with just one command.
 
 * File path in `<ARCHIVE_FILE>`:
-  * `**`:  zero or more directories (i.e. the current directory and all its subdirectories, **recursively**)
+  * `**`:  zero or more directories (i.e. the current directory and all its subdirectories, **recursively**, non-hidden)
   * `*`: any **ONE** directory
   * Read the section "[§ Notes on `FOLDER`](#notes-on-folder)" above for **relative path** and **absolute path** (absolute path is **NOT recommended at all!**)
 * File name at the end of `<ARCHIVE_FILE>`:
   * `*` or `*.*`: all the **supported** archive files (`.lod`, `.pac`, `.snd`, `.vid`, `.lwd`, `.mm7`, `.dod` & `.mm6`)
   * `*.EXT` (e.g. `*.lod`): all the **supported** archive files with the specified **extension** (`a.bitmaps.lod`'s extension is `.lod`, not `.bitmaps.lod`)
-  * `*.EXT1|EXT2|EXT3...` (e.g. `*.lod|lwd|vid`): all the supported archive files with any of the specified extensions
+  * `"*.EXT1|EXT2|EXT3..."` (e.g. `"*.lod|lwd|vid"`): all the supported archive files with any of the specified extensions, note that it has to be enclosed by double quotes
+
+You might need to wait a few minutes if you are trying to extract all the archive files from a whole game.
 
 **Examples:**
 
@@ -254,7 +256,7 @@ mmarch extract data/*.lod . *.txt
 The command above can extract all `.txt` resource files in all `.lod` archive files in `data/` directory. The resources will be placed in an auto-named subdirectory in current directory (current directory = `.`).
 
 ```
-mmarch extract */*.lod|lwd ../resource_folder
+mmarch extract "*/*.lod|lwd" ../resource_folder
 ```
 
 The command above can extract all the resource files in all `.lod` and `.lwd` archive files in any first level subdirectories of the current directory. The resources will be placed in an auto-named subdirectory in `resource_folder/` that belongs to the parent directory of the current directory.
@@ -287,11 +289,25 @@ mmarch create myfiles.sprites.lod mmspriteslod . mymonster01.bmp /p 23 mymonster
 
 ## Other tips and notes
 
+Less important tips and notes include:
+
+### Use initial letter for the first argument
+
 For the first argument, the initial letter of <code><strong>e</strong>xtract</code>, <code><strong>l</strong>ist</code>, <code><strong>a</strong>dd</code>, <code><strong>d</strong>elete</code>, <code><strong>r</strong>ename</code>, <code><strong>c</strong>reate</code>, <code><strong>m</strong>erge</code>, <code><strong>o</strong>ptimize</code>, <code><strong>h</strong>elp</code> can be used instead of them; they can be optionally preceded by a leading `-` or `--` which will do the same job.
+
+### Paths are case-insensitive
 
 File names and paths are case-insensitive.
 
+### Backup please
+
 The tool changes or overrides original archive or unpacked resource files permanently, you should consider copying them to other directory or with other names to make backups (e.g. `copy a.lod a.backup.lod`).
+
+### File will be skipped if it fails
+
+If the program encounters an error when extracting, adding or deleting a resource file from archive file(s), this resource file will be skipped and the rest will still be processed.
+
+### In-archive and extracted extension difference
 
 For some archive format, some files have different file extensions in the archive and as extracted files out of the archive. Don't wrong, you can use either extension to refer to the file. Below is the list (same extension is used if not listed):
 
@@ -307,6 +323,15 @@ For some archive format, some files have different file extensions in the archiv
 | `mmiconslod`   | No Extension   | `act`         |
 | `mmspriteslod` | No Extension   | `bmp`         |
 | `mm8loclod`    | No Extension   | `bmp`         |
+
+### Sprites with incorrect palette
+
+Official Might and Magic VI and VII has some sprites with incorrect palette:
+
+* MM6's bat images, stored in data/SPRITES.LOD as `BAT****` files, have incorrect palette: their palette should be 156 instead of 422 (pal422 exists in BITMAPS.LOD but is unrelated).
+* MM7's "swptree" images, stored in data/SPRITES.LOD as `swptree*` files, have incorrect palette: their palette should be 120 instead of 940 (pal940 doesn't exist in BITMAPS.LOD at all).
+
+**mmarch** will not fix their problem and will skip these sprite bitmaps (though GrayFace's MMArchive can fix them). However, you may find these sprites bitmap files well extracted with correct palette in [`fixedsprites.zip` in the repo](https://github.com/might-and-magic/mmarch/blob/master/fixedsprites.zip).
 
 ## Work with batch, NSIS and other scripts
 
@@ -339,12 +364,6 @@ IF %errorlevel% == 0 (
 )
 ```
 
-Extract all resource files in all archive files in current folder, resource file will be placed in a subfolder with the same name of its archive file without extension:
-
-```
-for %i in (*) do ( mmarch extract "%~nxi" "%~ni" )
-```
-
 ## Compilation
 
 How to compile the source of **mmarch**:
@@ -357,7 +376,7 @@ How to compile the source of **mmarch**:
 
 ## Change Log
 * [2020-03-11] v1.0: initial release
-* [2020-03-17] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
+* [2020-03-18] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
 
 ## License
 

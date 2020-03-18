@@ -73,11 +73,14 @@ type
 	function withTrailingSlash(path: string): string;
 
 resourcestring
-	      FileNotFound = 'File %s is not found in the archive';
-	     FileNameEmpty = 'File name is empty';
-	       DirNotFound = 'Directory %s is not found';
-	SEPaletteMustExist = 'Image must be in 256 colors mode and palette must be added to bitmaps.lod';
-	 SEPaletteNotFound = 'Failed to find matching palette in [*.]bitmaps.lod';
+	         FileNotFound = 'File %s is not found in the archive';
+	        FileNameEmpty = 'File name is empty';
+	          DirNotFound = 'Directory %s is not found';
+	   SEPaletteMustExist = 'Image must be in 256 colors mode and palette must be added to bitmaps.lod';
+	    SEPaletteNotFound = 'Failed to find matching palette in [*.]bitmaps.lod';
+	             ErrorStr = 'Error: %s';
+	         FileErrorStr = 'File %s error: %s';
+	FileInArchiveErrorStr = 'File %s in archive %s error:';
 
 
 implementation
@@ -335,7 +338,21 @@ begin
 		) then
 		begin
 			RSCreateDir(folder); // this function checks DirectoryExists()
-			arch.Extract(i, folder);
+
+			try // the individual file will be skipped if it gets an exception
+				arch.Extract(i, folder);
+			except
+				on E: OtherMmarchException do
+				begin
+					WriteLn(format(FileInArchiveErrorStr, [fFiles.Name[i], fFiles.FileName]));
+					WriteLn(E.Message);
+				end;
+				on E: Exception do
+				begin
+					WriteLn(format(FileInArchiveErrorStr, [fFiles.Name[i], fFiles.FileName]));
+					WriteLn(E.Message);
+				end;
+			end;
 		end;
 	end;
 end;
@@ -375,7 +392,14 @@ begin
 			verifyExtractedExt(i, ext)
 		) then
 		begin
-			fFiles.Delete(i);
+			try // the individual file will be skipped if it gets an exception
+				fFiles.Delete(i);
+			except
+				on E: OtherMmarchException do
+					WriteLn(format(FileErrorStr, [fFiles.Name[i], E.Message]));
+				on E: Exception do
+					WriteLn(format(FileErrorStr, [fFiles.Name[i], E.Message]));
+			end;
 		end;
 	end;
 	optimize;
@@ -403,7 +427,14 @@ begin
 	fileNames := getAllFilesInFolder(folder, ext);
 	for fileName in fileNames do
 	begin
-		add(withTrailingSlash(folder) + fileName);
+		try // the individual file will be skipped if it gets an exception
+			add(withTrailingSlash(folder) + fileName);
+		except
+			on E: OtherMmarchException do
+				WriteLn(format(FileErrorStr, [fileName, E.Message]));
+			on E: Exception do
+				WriteLn(format(FileErrorStr, [fileName, E.Message]));
+		end;
 	end;
 	fileNames.Free;
 end;

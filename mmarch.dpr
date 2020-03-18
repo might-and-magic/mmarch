@@ -133,7 +133,7 @@ begin
 end;
 
 
-function trimCharLeft(str: string; charToTrim: string): string;
+function trimCharLeft(str: string; charToTrim: char): string;
 var
 	n: integer;
 begin
@@ -141,6 +141,17 @@ begin
 	while (n <= Length(str)) and (str[n] = charToTrim) do
 		Inc(n);
 	SetString(Result, PChar(@str[n]), Length(str) - n + 1);
+end;
+
+
+function trimCharsRight(str: string; charToTrim: char; char2ToTrim: char): string;
+var
+	n: integer;
+begin
+	n := Length(str);
+	while (n >= 1) and ((str[n] = charToTrim) or (str[n] = char2ToTrim)) do
+		Dec(n);
+	SetString(Result, PChar(@str[1]), n);
 end;
 
 
@@ -170,8 +181,7 @@ end;
 
 function fileNameToExtList(fileName: string): TStringList;
 var
-	ext: string;
-	i: integer;
+	ext, extTemp: string;
 	ResultTemp: TStringList;
 begin
 	ext := ExtractFileExt(fileName);
@@ -184,12 +194,9 @@ begin
 		begin
 			ResultTemp := TStringList.Create;
 			Split('|', trimCharLeft(ext, '.'), ResultTemp);
-			for i := 0 to ResultTemp.Count - 1 do
-			begin
-				ResultTemp.ValueFromIndex[i] := '.' + AnsiLowerCase(ResultTemp.ValueFromIndex[i]);
-				if MatchStr(ResultTemp.ValueFromIndex[i], supportedExts) then
-				Result.Add(ResultTemp.ValueFromIndex[i]);
-			end;
+			for extTemp in ResultTemp do
+				if MatchStr('.' + AnsiLowerCase(extTemp), supportedExts) then
+					Result.Add('.' + AnsiLowerCase(extTemp));
 			ResultTemp.Free;
 		end
 		else
@@ -221,14 +228,10 @@ begin
 	for dir in dirListTemp do
 		if recursive = true then
 		begin
-			writeln('recur');
-			writeln(dir);
 			addFilesInAllDirsToFileList(withTrailingSlash(path) + dir, extList, true, fileList);
 		end
 		else
 		begin
-			writeln('nonrecur');
-			writeln(dir);
 			addAllExtFilesToFileList(dir, extList, fileList);
 		end;
 
@@ -238,13 +241,11 @@ end;
 
 function wildcardArchiveNameToArchiveList(archiveName: string): TStringList;
 var
-	path, fileName, pathRightPart, pathTemp: string;
+	path, fileName, pathRightAst, pathTemp: string;
 	extList: TStringList;
-const
-	supportedExts: array[0..7] of string = ('.lod', '.pac', '.snd', '.vid', '.lwd', '.mm7', '.dod', '.mm6');
 begin
 
-	path := ExtractFilePath(archiveName);
+	path := trimCharsRight(ExtractFilePath(archiveName), '\', '/');
 	fileName := ExtractFileName(archiveName);
 
 	extList := fileNameToExtList(fileName);
@@ -253,18 +254,18 @@ begin
 	Result.Clear;
 	Result.NameValueSeparator := nameValSeparator;
 
-	pathRightPart := copy(path, length(path)-2, 3);
-	if pathRightPart = '**/' then
+	pathRightAst := copy(path, length(path)-1, 2);
+	if pathRightAst = '**' then
 	begin
-		pathTemp := copy(path, 1, length(path)-3); // part of path where pathRightPart is substracted
+		pathTemp := copy(path, 1, length(path)-2); // part of path where pathRightAst is substracted
 		addFilesInAllDirsToFileList(pathTemp, extList, true, Result);
 	end
 	else
 	begin
-		pathRightPart := copy(path, length(path)-1, 2);
-		if pathRightPart = '*/' then
+		pathRightAst := copy(path, length(path), 1);
+		if pathRightAst = '*' then
 		begin
-			pathTemp := copy(path, 1, length(path)-2);
+			pathTemp := copy(path, 1, length(path)-1);
 			addFilesInAllDirsToFileList(pathTemp, extList, false, Result);
 		end
 		else
@@ -316,16 +317,24 @@ begin
 			fileName := ParamStr(i);
 			if fileName <> '' then
 			begin
-				try // the individual file will be skipped if it gets an OtherMmarchException (FileNotFound)
-					if Pos('*', fileName) > 0 then
-						archSimp.extractAll(extractToFolder, wildcardFileNameToExt(fileName))
-					else
+				if Pos('*', fileName) > 0 then
+					archSimp.extractAll(extractToFolder, wildcardFileNameToExt(fileName))
+				else
+				begin
+					try // the individual file will be skipped if it gets an exception
 						archSimp.extract(extractToFolder, fileName);
-				except
-					on E: OtherMmarchException do
-						WriteLn('Error: ' + E.Message);
-					on E: Exception do
-						WriteLn(E.Message);
+					except
+						on E: OtherMmarchException do
+						begin
+							WriteLn(format(FileInArchiveErrorStr, [fileName, archiveFileList.Names[j]]));
+							WriteLn(E.Message);
+						end;
+						on E: Exception do
+						begin
+							WriteLn(format(FileInArchiveErrorStr, [fileName, archiveFileList.Names[j]]));
+							WriteLn(E.Message);
+						end;
+					end;
 				end;
 			end;
 		end;
@@ -362,29 +371,40 @@ begin
 		filePath := ParamStr(i);
 		if filePath <> '' then // has file to add
 		begin
-			try // the individual file will be skipped if it gets an OtherMmarchException (FileNotFound)
-				folder := ExtractFilePath(filePath);
-				fileName := ExtractFileName(filePath);
-				ext := ExtractFileName(fileName);
+			folder := ExtractFilePath(filePath);
+			fileName := ExtractFileName(filePath);
+			ext := ExtractFileName(fileName);
 
-				if Pos('*', fileName) > 0 then
-					archSimp.addAll(folder, wildcardFileNameToExt(fileName))
+			if Pos('*', fileName) > 0 then
+				archSimp.addAll(folder, wildcardFileNameToExt(fileName))
+			else
+			begin
+				if (i <= ParamCount - 2) and (SameText(ParamStr(i + 1), '/p')) then // pal specified
+				begin
+					paletteIndex := strtoint(ParamStr(i + 2));
+
+					try // the individual file will be skipped if it gets an exception
+						archSimp.add(filePath, paletteIndex);
+					except
+						on E: OtherMmarchException do
+							WriteLn(format(FileErrorStr, [filePath, E.Message]));
+						on E: Exception do
+							WriteLn(format(FileErrorStr, [filePath, E.Message]));
+					end;
+
+					i := i + 2;
+				end
 				else
 				begin
-					if (i <= ParamCount - 2) and (SameText(ParamStr(i + 1), '/p')) then // pal specified
-					begin
-						paletteIndex := strtoint(ParamStr(i + 2));
-						archSimp.add(filePath, paletteIndex);
-						i := i + 2;
-					end
-					else
+					try // the individual file will be skipped if it gets an exception
 						archSimp.add(filePath);
+					except
+						on E: OtherMmarchException do
+							WriteLn(format(FileErrorStr, [filePath, E.Message]));
+						on E: Exception do
+							WriteLn(format(FileErrorStr, [filePath, E.Message]));
+					end;
 				end;
-			except
-				on E: OtherMmarchException do
-					WriteLn('Error: ' + E.Message);
-				on E: Exception do
-					WriteLn(E.Message);
 			end;
 		end;
 		i := i + 1; // increment no matter what
@@ -420,16 +440,18 @@ begin
 		fileName := ParamStr(i);
 		if fileName <> '' then
 		begin
-			try // the individual file will be skipped if it gets an OtherMmarchException (FileNotFound)
-				if Pos('*', fileName) > 0 then
-					archSimp.deleteAll(wildcardFileNameToExt(fileName))
-				else
+			if Pos('*', fileName) > 0 then
+				archSimp.deleteAll(wildcardFileNameToExt(fileName))
+			else
+			begin
+				try // the individual file will be skipped if it gets an exception
 					archSimp.delete(fileName);
-			except
-				on E: OtherMmarchException do
-					WriteLn('Error: ' + E.Message);
-				on E: Exception do
-					WriteLn(E.Message);
+				except
+					on E: OtherMmarchException do
+						WriteLn(format(FileErrorStr, [fileName, E.Message]));
+					on E: Exception do
+						WriteLn(format(FileErrorStr, [fileName, E.Message]));
+				end;
 			end;
 		end;
 	end;
@@ -493,18 +515,6 @@ begin
 
 	try
 
-// writeln(ExtractFilePath('./*.*'));
-// writeln(ExtractFilePath('./*.lod'));
-// writeln(ExtractFilePath('*.*'));
-// writeln(ExtractFilePath('*.lod'));
-// writeln(ExtractFilePath('folder/*.lod|mm6|mm7'));
-// writeln(ExtractFilePath('folder/*.lod|mm6|mm7'));
-// writeln(ExtractFilePath('folder/*.*'));
-// writeln(ExtractFilePath('folder/*.*'));
-// writeln(ExtractFilePath('folder/subfolder/*.lod'));
-// writeln(ExtractFilePath('folder/*/*.lod'));
-// writeln(ExtractFilePath('folder/**/*.lod'));
-
 		method := trimCharLeft(ParamStr(1), '-');
 		methodNumber := AnsiIndexStr(method, ['extract', 'e', 'list', 'l',
 			'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm',
@@ -531,12 +541,12 @@ begin
 	except
 		on E: MissingParamException do
 		begin
-			WriteLn('Error: ' + E.Message);
+			WriteLn(format(ErrorStr, [E.Message]));
 			WriteLn;
 			help(true);
 		end;
 		on E: OtherMmarchException do
-			WriteLn('Error: ' + E.Message);
+			WriteLn(format(ErrorStr, [E.Message]));
 		on E: Exception do
 			WriteLn(E.Message);
 	end;
