@@ -20,14 +20,17 @@ type
 	OtherMmarchException = class(Exception);
 
 const
-	MMARCHVERSION: string = '2.0';
+	MMARCHVERSION: string = '3.0';
 	MMARCHURL: string = 'https://github.com/might-and-magic/mmarch';
 	supportedExts: array[0..7] of string = ('.lod', '.pac', '.snd', '.vid', '.lwd', '.mm7', '.dod', '.mm6');
-	nameValSeparator: char = ':';
 
 var
 	method, archiveFile: string;
 	methodNumber: integer;
+
+	ts: TStringList;
+	t: string;
+	eList: TStringList;
 
 resourcestring
 	NeedFolder                   = 'You must specify a folder (use `.` for current folder)';
@@ -38,6 +41,7 @@ resourcestring
 	NeedArchiveFilesToMerge      = 'You must specify two archive files to be merged together';
 	NeedArchiveFile              = 'You must specify an archive file';
 	UnknownMethod                = 'Unknown method: %s';
+	UnknownCompareOption         = 'Unknown compare option: %s';
 
 	HELPSTR_FirstLine       = 'mmarch Version %s Usage:';
 	HELPSTR_ReqOpt          = '(`%s`: required; `%s`: optional; `%s`: or):';
@@ -51,31 +55,35 @@ resourcestring
 	HELPSTR_ReadDetails     = 'Read README.md file or go to the following page for more details and examples:';
 	HELPSTR_Colon           = ': ';
 
-	HELPSTR_BatchArchive      = '%s in `%s`';
-	HELPSTR_FilePath          = 'File path:';
-	HELPSTR_AllDirRecur       = 'all directories recursively';
-	HELPSTR_AnyOneDir         = 'any ONE directory';
+	HELPSTR_BatchArchive              = '%s in `%s`';
+	HELPSTR_FilePath                  = 'File path:';
+	HELPSTR_AllDirRecur               = 'all directories recursively';
+	HELPSTR_AnyOneDir                 = 'any ONE directory';
 
-	HELPSTR_FileName          = 'File name at the end:';
-	HELPSTR_AllArchive        = 'all supported archive files';
-	HELPSTR_AllArchiveWExt    = 'all supported archive files with specified extension';
-	HELPSTR_AllArchiveWAnyExt = 'all supported archive files with any of specified extensions';
+	HELPSTR_FileName                  = 'File name at the end:';
+	HELPSTR_AllArchive                = 'all supported archive files';
+	HELPSTR_AllArchiveWExt            = 'all supported archive files with specified extension';
+	HELPSTR_AllArchiveWAnyExt         = 'all supported archive files with any of specified extensions';
 
-	HELPPRM_ARCHIVE_FILE      = 'ARCHIVE_FILE';
-	HELPPRM_FOLDER            = 'FOLDER';
-	HELPPRM_FILE_TO_EXTRACT_1 = 'FILE_TO_EXTRACT_1';
-	HELPPRM_FILE_TO_EXTRACT_2 = 'FILE_TO_EXTRACT_2';
-	HELPPRM_SEPARATOR         = 'SEPARATOR';
-	HELPPRM_FILE_TO_ADD_1     = 'FILE_TO_ADD_1';
-	HELPPRM_FILE_TO_ADD_2     = 'FILE_TO_ADD_2';
-	HELPPRM_FILE_TO_DELETE_1  = 'FILE_TO_DELETE_1';
-	HELPPRM_FILE_TO_DELETE_2  = 'FILE_TO_DELETE_2';
-	HELPPRM_OLD_FILE_NAME     = 'OLD_FILE_NAME';
-	HELPPRM_NEW_FILE_NAME     = 'NEW_FILE_NAME';
-	HELPPRM_ARCHIVE_FILE_TYPE = 'ARCHIVE_FILE_TYPE';
-	HELPPRM_ARCHIVE_FILE_2    = 'ARCHIVE_FILE_2';
+	HELPPRM_ARCHIVE_FILE              = 'ARCHIVE_FILE';
+	HELPPRM_FOLDER                    = 'FOLDER';
+	HELPPRM_FILE_TO_EXTRACT_1         = 'FILE_TO_EXTRACT_1';
+	HELPPRM_FILE_TO_EXTRACT_2         = 'FILE_TO_EXTRACT_2';
+	HELPPRM_SEPARATOR                 = 'SEPARATOR';
+	HELPPRM_FILE_TO_ADD_1             = 'FILE_TO_ADD_1';
+	HELPPRM_FILE_TO_ADD_2             = 'FILE_TO_ADD_2';
+	HELPPRM_FILE_TO_DELETE_1          = 'FILE_TO_DELETE_1';
+	HELPPRM_FILE_TO_DELETE_2          = 'FILE_TO_DELETE_2';
+	HELPPRM_OLD_FILE_NAME             = 'OLD_FILE_NAME';
+	HELPPRM_NEW_FILE_NAME             = 'NEW_FILE_NAME';
+	HELPPRM_ARCHIVE_FILE_TYPE         = 'ARCHIVE_FILE_TYPE';
+	HELPPRM_ARCHIVE_FILE_2            = 'ARCHIVE_FILE_2';
+	HELPPRM_ARCHIVE_FILE_OR_FOLDER    = 'ARCHIVE_FILE_OR_FOLDER';
+	HELPPRM_ARCHIVE_FILE_OR_FOLDER_2  = 'ARCHIVE_FILE_OR_FOLDER_2';
+	HELPPRM_DIFF_FOLDER               = 'DIFF_FOLDER';
+	HELPPRM_SCRIPT_FOLDER             = 'SCRIPT_FOLDER';
 
-	HELPPRM_FILE_TO_XX_X      = 'FILE_TO_XX_?';
+	HELPPRM_FILE_TO_XX_X              = 'FILE_TO_XX_?';
 
 
 procedure help(short: boolean = false);
@@ -89,6 +97,9 @@ begin
 	WriteLn('mmarch rename <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_OLD_FILE_NAME + '> <' + HELPPRM_NEW_FILE_NAME + '>');
 	WriteLn('mmarch create <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_ARCHIVE_FILE_TYPE + '> <' + HELPPRM_FOLDER + '> [' + HELPPRM_FILE_TO_ADD_1 + '] [' + HELPPRM_FILE_TO_ADD_2 + '] [...]');
 	WriteLn('mmarch merge <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_ARCHIVE_FILE_2 + '>');
+	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '>');
+	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> {nsis|batch|filesonly} <' + HELPPRM_DIFF_FOLDER + '>');
+	WriteLn('mmarch compare-files-to-{nsis|batch} <' + HELPPRM_DIFF_FOLDER + '> <' + HELPPRM_SCRIPT_FOLDER + '>');
 	WriteLn('mmarch optimize <' + HELPPRM_ARCHIVE_FILE + '>');
 	WriteLn('mmarch help');
 
@@ -124,12 +135,12 @@ begin
 end;
 
 
-procedure Split(Delimiter: Char; Str: string; ListOfStrings: TStrings) ;
+procedure Split(Delimiter: Char; Str: string; TStr: TStrings) ;
 begin
-	ListOfStrings.Clear;
-	ListOfStrings.Delimiter       := Delimiter;
-	ListOfStrings.StrictDelimiter := True;
-	ListOfStrings.DelimitedText   := Str;
+	TStr.Clear;
+	TStr.Delimiter       := Delimiter;
+	TStr.StrictDelimiter := True;
+	TStr.DelimitedText   := Str;
 end;
 
 
@@ -205,40 +216,6 @@ begin
 end;
 
 
-procedure addAllExtFilesToFileList(path: string; extList: TStringList; var fileList: TStringList);
-var
-	ext, fileName: string;
-begin
-	for ext in extList do
-		for fileName in getAllFilesInFolder(path, ext) do
-			fileList.Add(fileName + nameValSeparator + path);
-end;
-
-
-procedure addFilesInAllDirsToFileList(path: string; extList: TStringList; recursive: boolean; var fileList: TStringList);
-var
-	dirListTemp: TStringList;
-	dir: string;
-begin
-	if recursive = true then
-		addAllExtFilesToFileList(path, extList, fileList);
-
-	dirListTemp := getAllFilesInFolder(path, '<DIR>');
-
-	for dir in dirListTemp do
-		if recursive = true then
-		begin
-			addFilesInAllDirsToFileList(withTrailingSlash(path) + dir, extList, true, fileList);
-		end
-		else
-		begin
-			addAllExtFilesToFileList(dir, extList, fileList);
-		end;
-
-	dirListTemp.Free;
-end;
-
-
 function wildcardArchiveNameToArchiveList(archiveName: string): TStringList;
 var
 	path, fileName, pathRightAst, pathTemp: string;
@@ -258,7 +235,7 @@ begin
 	if pathRightAst = '**' then
 	begin
 		pathTemp := copy(path, 1, length(path)-2); // part of path where pathRightAst is substracted
-		addFilesInAllDirsToFileList(pathTemp, extList, true, Result);
+		addAllFilesToFileList(Result, pathTemp, 1, false, true, extList);
 	end
 	else
 	begin
@@ -266,10 +243,10 @@ begin
 		if pathRightAst = '*' then
 		begin
 			pathTemp := copy(path, 1, length(path)-1);
-			addFilesInAllDirsToFileList(pathTemp, extList, false, Result);
+			addAllFilesToFileList(Result, pathTemp, 2, false, true, extList);
 		end
 		else
-			addAllExtFilesToFileList(path, extList, Result);
+			addAllFilesToFileList(Result, path, 3, false, true, extList);
 	end;
 	extList.Free;
 end;
@@ -300,44 +277,61 @@ begin
 
 	for j := 0 to archiveFileList.Count - 1 do
 	begin
-		archiveFileFolder := archiveFileList.ValueFromIndex[j];
-		archSimp := MMArchSimple.load(withTrailingSlash(archiveFileFolder) + archiveFileList.Names[j]);
-		fileName := ParamStr(4);
 
-		if Pos('*', archiveFile) > 0 then
-			extractToFolder := withTrailingSlash(extractToBaseFolder)
-			+ withTrailingSlash(archiveFileFolder)
-			+ AnsiReplaceStr(archiveFileList.Names[j], '.', '_');
+		try // the individual archive file will be skipped if it gets an exception
 
-		if fileName = '' then // FILE_TO_EXTRACT_1 is empty, extract all
-			archSimp.extractAll(extractToFolder);
+			archiveFileFolder := archiveFileList.ValueFromIndex[j];
+			archSimp := MMArchSimple.load(withTrailingSlash(archiveFileFolder) + archiveFileList.Names[j]);
+			fileName := ParamStr(4);
 
-		for i := 4 to ParamCount do
-		begin
-			fileName := ParamStr(i);
-			if fileName <> '' then
+			if Pos('*', archiveFile) > 0 then
+				extractToFolder := withTrailingSlash(extractToBaseFolder)
+				+ withTrailingSlash(archiveFileFolder)
+				+ archiveFileList.Names[j] + '.' + 'mmarchive';
+
+			if fileName = '' then // FILE_TO_EXTRACT_1 is empty, extract all
+				archSimp.extractAll(extractToFolder);
+
+			for i := 4 to ParamCount do
 			begin
-				if Pos('*', fileName) > 0 then
-					archSimp.extractAll(extractToFolder, wildcardFileNameToExt(fileName))
-				else
+				fileName := ParamStr(i);
+				if fileName <> '' then
 				begin
-					try // the individual file will be skipped if it gets an exception
-						archSimp.extract(extractToFolder, fileName);
-					except
-						on E: OtherMmarchException do
-						begin
-							WriteLn(format(FileInArchiveErrorStr, [fileName, archiveFileList.Names[j]]));
-							WriteLn(E.Message);
-						end;
-						on E: Exception do
-						begin
-							WriteLn(format(FileInArchiveErrorStr, [fileName, archiveFileList.Names[j]]));
-							WriteLn(E.Message);
+					if Pos('*', fileName) > 0 then
+						archSimp.extractAll(extractToFolder, wildcardFileNameToExt(fileName))
+					else
+					begin
+						try // the individual resource file will be skipped if it gets an exception
+							archSimp.extract(extractToFolder, fileName);
+						except
+							on E: OtherMmarchException do
+							begin
+								WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fileName), beautifyPath(archiveFileList.Names[j])]));
+								WriteLn(E.Message);
+							end;
+							on E: Exception do
+							begin
+								WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fileName), beautifyPath(archiveFileList.Names[j])]));
+								WriteLn(E.Message);
+							end;
 						end;
 					end;
 				end;
 			end;
+
+		except
+			on E: OtherMmarchException do
+			begin
+				WriteLn(format(ArchiveFileErrorStr, [beautifyPath(archiveFileList.Names[j])]));
+				WriteLn(E.Message);
+			end;
+			on E: Exception do
+			begin
+				WriteLn(format(ArchiveFileErrorStr, [beautifyPath(archiveFileList.Names[j])]));
+				WriteLn(E.Message);
+			end;
 		end;
+
 	end;
 
 	archiveFileList.Free;
@@ -383,26 +377,26 @@ begin
 				begin
 					paletteIndex := strtoint(ParamStr(i + 2));
 
-					try // the individual file will be skipped if it gets an exception
+					try // the individual resource file will be skipped if it gets an exception
 						archSimp.add(filePath, paletteIndex);
 					except
 						on E: OtherMmarchException do
-							WriteLn(format(FileErrorStr, [filePath, E.Message]));
+							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
 						on E: Exception do
-							WriteLn(format(FileErrorStr, [filePath, E.Message]));
+							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
 					end;
 
 					i := i + 2;
 				end
 				else
 				begin
-					try // the individual file will be skipped if it gets an exception
+					try // the individual resource file will be skipped if it gets an exception
 						archSimp.add(filePath);
 					except
 						on E: OtherMmarchException do
-							WriteLn(format(FileErrorStr, [filePath, E.Message]));
+							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
 						on E: Exception do
-							WriteLn(format(FileErrorStr, [filePath, E.Message]));
+							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
 					end;
 				end;
 			end;
@@ -424,6 +418,7 @@ begin
 	addProc(archSimp, 3);
 end;
 
+
 procedure delete;
 var
 	fileName: string;
@@ -444,13 +439,13 @@ begin
 				archSimp.deleteAll(wildcardFileNameToExt(fileName))
 			else
 			begin
-				try // the individual file will be skipped if it gets an exception
+				try // the individual resource file will be skipped if it gets an exception
 					archSimp.delete(fileName);
 				except
 					on E: OtherMmarchException do
-						WriteLn(format(FileErrorStr, [fileName, E.Message]));
+						WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
 					on E: Exception do
-						WriteLn(format(FileErrorStr, [fileName, E.Message]));
+						WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
 				end;
 			end;
 		end;
@@ -502,6 +497,209 @@ begin
 end;
 
 
+function compareFile(oldFile: string; newFile: string): boolean;
+var
+	memOld, memNew: TMemoryStream;
+begin
+	memOld := TMemoryStream.Create;
+	memNew := TMemoryStream.Create;
+
+	memOld.LoadFromFile(oldFile);
+	memNew.LoadFromFile(newFile);
+
+	Result := (memOld.Size = memNew.Size) and CompareMem(memOld.Memory, memNew.Memory, memOld.Size);
+end;
+
+
+procedure compareArchive(oldArchive: string; newArchive: string);
+begin
+end;
+
+
+procedure compareBase(oldArchiveOrFolder: string; newArchiveOrFolder: string);
+var
+	oldFolderList: TStringList;
+	newFolderList: TStringList;
+
+	oldFileList: TStringList;
+	newFileList: TStringList;
+
+	addedFolderList: TStringList;
+	modifiedFolderList: TStringList;
+	deletedFolderList: TStringList;
+
+	addedFileList: TStringList;
+	modifiedFileList: TStringList;
+	deletedFileList: TStringList;
+
+	elTemp: string;
+
+	oldArchiveOrFolderLen, newArchiveOrFolderLen: integer;
+
+	i, nTemp: integer;
+begin
+
+	oldArchiveOrFolderLen := length(withTrailingSlash(beautifyPath(oldArchiveOrFolder)));
+	newArchiveOrFolderLen := length(withTrailingSlash(beautifyPath(newArchiveOrFolder)));
+
+	oldFolderList := TStringList.Create;
+	newFolderList := TStringList.Create;
+
+	addAllFilesToFileList(oldFolderList, oldArchiveOrFolder, 1, true, false);
+	addAllFilesToFileList(newFolderList, newArchiveOrFolder, 1, true, false);
+
+	for i := 0 to oldFolderList.Count - 1 do // remove root from path
+	begin
+		elTemp := oldFolderList[i];
+		System.Delete(elTemp, 1, oldArchiveOrFolderLen);
+		oldFolderList[i] := elTemp;
+	end;
+
+	for i := 0 to newFolderList.Count - 1 do // remove root from path
+	begin
+		elTemp := newFolderList[i];
+		System.Delete(elTemp, 1, newArchiveOrFolderLen);
+		newFolderList[i] := elTemp;
+	end;
+
+	oldFileList := TStringList.Create;
+	newFileList := TStringList.Create;
+
+	addAllFilesToFileList(oldFileList, oldArchiveOrFolder, 1, false, false);
+	addAllFilesToFileList(newFileList, newArchiveOrFolder, 1, false, false);
+
+	for i := 0 to oldFileList.Count - 1 do // remove root from path
+	begin
+		elTemp := oldFileList[i];
+		System.Delete(elTemp, 1, oldArchiveOrFolderLen);
+		oldFileList[i] := elTemp;
+	end;
+
+	for i := 0 to newFileList.Count - 1 do // remove root from path
+	begin
+		elTemp := newFileList[i];
+		System.Delete(elTemp, 1, newArchiveOrFolderLen);
+		newFileList[i] := elTemp;
+	end;
+
+	addedFolderList := TStringList.Create;
+	modifiedFolderList := TStringList.Create;
+	deletedFolderList := TStringList.Create;
+
+	for elTemp in newFolderList do // add to added & modified list
+	begin
+		if oldFolderList.IndexOf(elTemp) = -1 then
+			addedFolderList.Add(elTemp)
+		else
+		begin
+			nTemp := oldFolderList.IndexOf(elTemp);
+			if nTemp <> -1 then
+			begin
+				oldFolderList.Delete(nTemp);
+			end;
+		end;
+	end;
+
+	for elTemp in oldFolderList do // add to deleted list
+	begin
+		deletedFolderList.Add(elTemp);
+	end;
+
+
+	addedFileList := TStringList.Create;
+	modifiedFileList := TStringList.Create;
+	deletedFileList := TStringList.Create;
+
+	for elTemp in newFileList do // add to added & modified list
+	begin
+		if oldFileList.IndexOf(elTemp) = -1 then
+			addedFileList.Add(elTemp)
+		else
+		begin
+			nTemp := oldFileList.IndexOf(elTemp);
+			if nTemp <> -1 then
+			begin
+				oldFileList.Delete(nTemp);
+				if not compareFile(( withTrailingSlash(beautifyPath(oldArchiveOrFolder)) + elTemp ), ( withTrailingSlash(beautifyPath(oldArchiveOrFolder)) + elTemp )) then
+					modifiedFileList.Add(elTemp);
+			end;
+		end;
+	end;
+
+	for elTemp in oldFileList do // add to deleted list
+	begin
+		deletedFileList.Add(elTemp);
+	end;
+
+
+	// writeln('added files');
+	// for elTemp in addedFileList do // add to deleted list
+	// begin
+	// 	writeln(elTemp);
+	// end;
+
+
+// mmarch k .\\/test .//\test_rec/test
+
+end;
+
+procedure compareReport(oldArchiveOrFolder: string; newArchiveOrFolder: string);
+begin
+	compareBase(oldArchiveOrFolder, newArchiveOrFolder);
+end;
+
+procedure compareFilesonly(oldArchiveOrFolder: string; newArchiveOrFolder: string);
+begin
+end;
+
+procedure compareFilesToNsis;
+begin
+end;
+
+procedure compareFilesToBatch;
+begin
+end;
+
+procedure compareNsis(oldArchiveOrFolder: string; newArchiveOrFolder: string);
+begin
+end;
+
+procedure compareBatch(oldArchiveOrFolder: string; newArchiveOrFolder: string);
+begin
+end;
+
+
+procedure compare;
+var
+	archiveFile2, option: string;
+	optionNumber: integer;
+
+begin
+
+	archiveFile2 := ParamStr(3);
+	if archiveFile2 = '' then
+		raise MissingParamException.Create(NeedArchiveFilesToMerge);
+
+	option := ParamStr(4);
+
+	optionNumber := AnsiIndexStr(option,
+	['nsis',
+	'batch',
+	'filesonly',
+	'report', '']);
+
+	Case optionNumber of
+		0: compareNsis(archiveFile, archiveFile2);
+		1: compareBatch(archiveFile, archiveFile2);
+		2: compareFilesonly(archiveFile, archiveFile2);
+		3,  4: compareReport(archiveFile, archiveFile2);
+	else // -1: not found in the array
+		raise MissingParamException.CreateFmt(UnknownCompareOption, [option]);
+	end;
+
+end;
+
+
 procedure optimize;
 var
 	archSimp: MMArchSimple;
@@ -518,10 +716,12 @@ begin
 		method := trimCharLeft(ParamStr(1), '-');
 		methodNumber := AnsiIndexStr(method, ['extract', 'e', 'list', 'l',
 			'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm',
-			'optimize', 'o', 'help', 'h', '']);
+			'compare', 'k', 'optimize', 'o',
+			'compare-files-to-nsis', 'cf2n', 'compare-files-to-batch', 'cf2b',
+			'help', 'h', '']);
 		archiveFile := ParamStr(2);
 
-		if (archiveFile = '') And (methodNumber < 16) And (methodNumber >= 0) then // < 16: method is not `help`
+		if (archiveFile = '') And (methodNumber < 22) And (methodNumber >= 0) then // < 18: method is not `help`, `compareFilesToNsis` or `compareFilesToBatch`
 			raise MissingParamException.Create(NeedArchiveFile);
 
 		Case methodNumber of
@@ -532,8 +732,11 @@ begin
 			 8,  9: rename;
 			10, 11: create;
 			12, 13: merge;
-			14, 15: optimize;
-			16, 17, 18: help;
+			14, 15: compare;
+			16, 17: optimize;
+			18, 19: compareFilesToNsis;
+			20, 21: compareFilesToBatch;
+			22, 23, 24: help;
 		else // -1: not found in the array
 			raise MissingParamException.CreateFmt(UnknownMethod, [method]);
 		end;
