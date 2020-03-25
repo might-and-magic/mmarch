@@ -13,7 +13,7 @@ program mmarch;
 {$APPTYPE CONSOLE}
 
 uses
-	SysUtils, StrUtils, Classes, MMArchUnit, RSQ;
+	SysUtils, StrUtils, Classes, RSLod, MMArchUnit, RSQ;
 
 type
 	MissingParamException = class(Exception);
@@ -28,9 +28,10 @@ var
 	method, archiveFile: string;
 	methodNumber: integer;
 
-	ts: TStringList;
-	t: string;
-	eList: TStringList;
+
+	addedFileList : TStringList;
+	modifiedFileList : TStringList;
+	deletedFileList : TStringList;
 
 resourcestring
 	NeedFolder                   = 'You must specify a folder (use `.` for current folder)';
@@ -497,7 +498,7 @@ begin
 end;
 
 
-function compareFile(oldFile: string; newFile: string): boolean;
+function compareFile(oldFile, newFile: string): boolean;
 var
 	memOld, memNew: TMemoryStream;
 begin
@@ -511,8 +512,110 @@ begin
 end;
 
 
-procedure compareArchive(oldArchive: string; newArchive: string);
+function compareInArchiveFile(oldRaw, newRaw: TRSMMFiles; oldIndex, newIndex: integer): boolean;
+// mostly from TForm1.DoCompare in Unit1.pas in GrayFace's LodCompare's source files
+var
+	r: TStream;
+	mem1, mem2: TMemoryStream;
+
 begin
+
+	mem1 := TMemoryStream.Create;
+	mem2 := TMemoryStream.Create;
+
+	Result := (newRaw.UnpackedSize[newIndex] = oldRaw.UnpackedSize[oldIndex]);
+
+	if Result then
+	begin
+		// raw compare
+		Result := newRaw.Size[newIndex] = oldRaw.Size[oldIndex];
+		if Result then
+		begin
+			mem1.SetSize(newRaw.Size[newIndex]);
+			r := newRaw.GetAsIsFileStream(newIndex);
+			try
+				r.ReadBuffer(mem1.Memory^, mem1.Size);
+			finally
+				newRaw.FreeAsIsFileStream(newIndex, r);
+			end;
+
+			mem2.SetSize(newRaw.Size[newIndex]);
+			r := oldRaw.GetAsIsFileStream(oldIndex);
+			try
+				r.ReadBuffer(mem2.Memory^, mem2.Size);
+			finally
+				oldRaw.FreeAsIsFileStream(oldIndex, r);
+			end;
+
+			Result := CompareMem(mem1.Memory, mem2.Memory, mem1.Size);
+		end;
+		// compare unpacked
+		if not Result and (newRaw.IsPacked[newIndex] or oldRaw.IsPacked[oldIndex]) then
+			try
+				if newRaw.IsPacked[newIndex] then
+				begin
+					mem1.SetSize(newRaw.UnpackedSize[newIndex]);
+					mem1.Position := 0;
+					newRaw.RawExtract(newIndex, mem1);
+				end;
+				if oldRaw.IsPacked[oldIndex] then
+				begin
+					mem2.SetSize(oldRaw.UnpackedSize[oldIndex]);
+					mem2.Position := 0;
+					oldRaw.RawExtract(oldIndex, mem2);
+				end;
+				Result := (mem1.Size = mem2.Size) and CompareMem(mem1.Memory, mem2.Memory, mem1.Size);
+			except
+				Result := false;
+			end;
+	end;
+
+end;
+
+
+procedure compareArchive(oldArchive, newArchive: string; var addedFileList, modifiedFileList, deletedFileList: TStringList);
+var
+	oldArchi, newArchi: TRSMMArchive;
+	oldFFiles, newFFiles: TRSMMFiles;
+	oldFileNameList, oldFileNameListTemp: TStringList;
+	i, nTemp: integer;
+	elTemp: string;
+
+begin
+
+	oldArchi := RSLoadMMArchive(oldArchive);
+	oldFFiles := oldArchi.RawFiles;
+	oldFileNameList := TStringList.Create;
+
+	for i := 0 to oldFFiles.Count - 1 do
+		oldFileNameList.Add(oldFFiles.Name[i]);
+
+	newArchi := RSLoadMMArchive(newArchive);
+	newFFiles := newArchi.RawFiles;
+
+	oldFileNameListTemp := TStringList.Create;
+	oldFileNameListTemp.Assign(oldFileNameList);
+
+	for i := 0 to newFFiles.Count - 1 do
+	begin
+		elTemp := newFFiles.Name[i];
+		nTemp := oldFileNameList.IndexOf(elTemp);
+		if nTemp = -1 then
+			addedFileList.Add(elTemp)
+		else
+		begin
+			oldFileNameList.Delete(nTemp);
+			if not compareInArchiveFile(oldArchi.RawFiles, newArchi.RawFiles, oldFileNameListTemp.IndexOf(elTemp), i) then
+				modifiedFileList.Add(elTemp);
+		end;
+	end;
+
+	for elTemp in oldFileNameList do
+		deletedFileList.Add(elTemp);
+
+	oldFileNameList.Free;
+	oldFileNameListTemp.Free;
+
 end;
 
 
@@ -537,6 +640,7 @@ var
 	oldArchiveOrFolderLen, newArchiveOrFolderLen: integer;
 
 	i, nTemp: integer;
+
 begin
 
 	oldArchiveOrFolderLen := length(withTrailingSlash(beautifyPath(oldArchiveOrFolder)));
@@ -588,16 +692,11 @@ begin
 
 	for elTemp in newFolderList do // add to added & modified list
 	begin
-		if oldFolderList.IndexOf(elTemp) = -1 then
+		nTemp := oldFolderList.IndexOf(elTemp);
+		if nTemp = -1 then
 			addedFolderList.Add(elTemp)
 		else
-		begin
-			nTemp := oldFolderList.IndexOf(elTemp);
-			if nTemp <> -1 then
-			begin
-				oldFolderList.Delete(nTemp);
-			end;
-		end;
+			oldFolderList.Delete(nTemp);
 	end;
 
 	for elTemp in oldFolderList do // add to deleted list
@@ -612,17 +711,15 @@ begin
 
 	for elTemp in newFileList do // add to added & modified list
 	begin
-		if oldFileList.IndexOf(elTemp) = -1 then
+		nTemp := oldFileList.IndexOf(elTemp);
+		if nTemp = -1 then
 			addedFileList.Add(elTemp)
 		else
 		begin
-			nTemp := oldFileList.IndexOf(elTemp);
-			if nTemp <> -1 then
-			begin
-				oldFileList.Delete(nTemp);
-				if not compareFile(( withTrailingSlash(beautifyPath(oldArchiveOrFolder)) + elTemp ), ( withTrailingSlash(beautifyPath(oldArchiveOrFolder)) + elTemp )) then
-					modifiedFileList.Add(elTemp);
-			end;
+			oldFileList.Delete(nTemp);
+			if not compareFile(( withTrailingSlash(beautifyPath(oldArchiveOrFolder)) + elTemp ),
+							( withTrailingSlash(beautifyPath(newArchiveOrFolder)) + elTemp )) then
+				modifiedFileList.Add(elTemp);
 		end;
 	end;
 
@@ -632,14 +729,35 @@ begin
 	end;
 
 
-	// writeln('added files');
-	// for elTemp in addedFileList do // add to deleted list
+	// for elTemp in modifiedFileList do
+	// begin
+	// 	if MatchStr(AnsiLowerCase(ExtractFileExt(elTemp)), supportedExts) then
+	// 		compareArchive(( withTrailingSlash(beautifyPath(oldArchiveOrFolder)) + elTemp ),
+	// 						( withTrailingSlash(beautifyPath(newArchiveOrFolder)) + elTemp ),
+	// 						addedFileList, modifiedFileList, deletedFileList: TStringList) then
+
+	// end;
+
+
+	// writeln('mod files');
+	// for elTemp in modifiedFileList do
 	// begin
 	// 	writeln(elTemp);
 	// end;
 
 
 // mmarch k .\\/test .//\test_rec/test
+
+	oldFolderList.Free;
+	newFolderList.Free;
+	oldFileList.Free;
+	newFileList.Free;
+	addedFolderList.Free;
+	modifiedFolderList.Free;
+	deletedFolderList.Free;
+	addedFileList.Free;
+	modifiedFileList.Free;
+	deletedFileList.Free;
 
 end;
 
