@@ -196,6 +196,12 @@ mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2>
 
 Print a comparison report.
 
+**Example:**
+
+```
+mmarch compare events.lod events2.lod
+```
+
 ### `nsis`
 
 ```
@@ -234,12 +240,7 @@ mmarch compare-files-to-batch <OLD_DIFF_FILE_FOLDER> <SCRIPT_FOLDER> <DIFF_FILE_
 
 The former command generates a .nsi script file, while the later command generates a .bat (Window Batch) file in the `SCRIPT_FOLDER`, according to the files in `[OLD_DIFF_FILE_FOLDER]` that you get using `filesonly` option of `mmarch compare`. `[OLD_DIFF_FILE_FOLDER]` will then be moved to `SCRIPT_FOLDER` (becoming its subfolder) and renamed with `DIFF_FILE_FOLDER_NAME`.
 
-**Examples:**
-
-```
-mmarch compare events.lod events2.lod
-```
-
+**`compare` mixed examples:**
 ```
 mmarch compare game_folder_old game_folder_new nsis nsis_folder files
 ```

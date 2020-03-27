@@ -13,7 +13,7 @@ program mmarch;
 {$APPTYPE CONSOLE}
 
 uses
-	Windows, SysUtils, StrUtils, Classes, RSLod, MMArchUnit, RSQ;
+	Windows, SysUtils, StrUtils, Classes, RSLod, MMArchMain, MMArchPath, RSQ;
 
 type
 	MissingParamException = class(Exception);
@@ -28,9 +28,6 @@ var
 	method, archiveFile: string;
 	methodNumber: integer;
 
-	addedFileList : TStringList;
-	modifiedFileList : TStringList;
-	deletedFileList : TStringList;
 
 resourcestring
 	NeedFolder                   = 'You must specify a folder (use `.` for current folder)';
@@ -39,6 +36,7 @@ resourcestring
 	NeedFilesToRename            = 'You must specify a file to rename, and a file name that the file will be renamed to';
 	NeedArchiveFileTypeAndFolder = 'You must specify a type of your archive file that will be created and a folder (use `.` for current folder)';
 	NeedArchiveFilesToMerge      = 'You must specify two archive files to be merged together';
+	InsufficientParameters       = 'Insufficient parameters';
 	NeedArchiveFile              = 'You must specify an archive file';
 	UnknownMethod                = 'Unknown method: %s';
 	UnknownCompareOption         = 'Unknown compare option: %s';
@@ -55,35 +53,36 @@ resourcestring
 	HELPSTR_ReadDetails     = 'Read README.md file or go to the following page for more details and examples:';
 	HELPSTR_Colon           = ': ';
 
-	HELPSTR_BatchArchive              = '%s in `%s`';
-	HELPSTR_FilePath                  = 'File path:';
-	HELPSTR_AllDirRecur               = 'all directories recursively';
-	HELPSTR_AnyOneDir                 = 'any ONE directory';
+	HELPSTR_BatchArchive             = '%s in `%s`';
+	HELPSTR_FilePath                 = 'File path:';
+	HELPSTR_AllDirRecur              = 'all directories recursively';
+	HELPSTR_AnyOneDir                = 'any ONE directory';
 
-	HELPSTR_FileName                  = 'File name at the end:';
-	HELPSTR_AllArchive                = 'all supported archive files';
-	HELPSTR_AllArchiveWExt            = 'all supported archive files with specified extension';
-	HELPSTR_AllArchiveWAnyExt         = 'all supported archive files with any of specified extensions';
+	HELPSTR_FileName                 = 'File name at the end:';
+	HELPSTR_AllArchive               = 'all supported archive files';
+	HELPSTR_AllArchiveWExt           = 'all supported archive files with specified extension';
+	HELPSTR_AllArchiveWAnyExt        = 'all supported archive files with any of specified extensions';
 
-	HELPPRM_ARCHIVE_FILE              = 'ARCHIVE_FILE';
-	HELPPRM_FOLDER                    = 'FOLDER';
-	HELPPRM_FILE_TO_EXTRACT_1         = 'FILE_TO_EXTRACT_1';
-	HELPPRM_FILE_TO_EXTRACT_2         = 'FILE_TO_EXTRACT_2';
-	HELPPRM_SEPARATOR                 = 'SEPARATOR';
-	HELPPRM_FILE_TO_ADD_1             = 'FILE_TO_ADD_1';
-	HELPPRM_FILE_TO_ADD_2             = 'FILE_TO_ADD_2';
-	HELPPRM_FILE_TO_DELETE_1          = 'FILE_TO_DELETE_1';
-	HELPPRM_FILE_TO_DELETE_2          = 'FILE_TO_DELETE_2';
-	HELPPRM_OLD_FILE_NAME             = 'OLD_FILE_NAME';
-	HELPPRM_NEW_FILE_NAME             = 'NEW_FILE_NAME';
-	HELPPRM_ARCHIVE_FILE_TYPE         = 'ARCHIVE_FILE_TYPE';
-	HELPPRM_ARCHIVE_FILE_2            = 'ARCHIVE_FILE_2';
-	HELPPRM_ARCHIVE_FILE_OR_FOLDER    = 'ARCHIVE_FILE_OR_FOLDER';
-	HELPPRM_ARCHIVE_FILE_OR_FOLDER_2  = 'ARCHIVE_FILE_OR_FOLDER_2';
-	HELPPRM_DIFF_FOLDER               = 'DIFF_FOLDER';
-	HELPPRM_SCRIPT_FOLDER             = 'SCRIPT_FOLDER';
-
-	HELPPRM_FILE_TO_XX_X              = 'FILE_TO_XX_?';
+	HELPPRM_ARCHIVE_FILE             = 'ARCHIVE_FILE';
+	HELPPRM_FOLDER                   = 'FOLDER';
+	HELPPRM_FILE_TO_EXTRACT_1        = 'FILE_TO_EXTRACT_1';
+	HELPPRM_FILE_TO_EXTRACT_2        = 'FILE_TO_EXTRACT_2';
+	HELPPRM_SEPARATOR                = 'SEPARATOR';
+	HELPPRM_FILE_TO_ADD_1            = 'FILE_TO_ADD_1';
+	HELPPRM_FILE_TO_ADD_2            = 'FILE_TO_ADD_2';
+	HELPPRM_FILE_TO_DELETE_1         = 'FILE_TO_DELETE_1';
+	HELPPRM_FILE_TO_DELETE_2         = 'FILE_TO_DELETE_2';
+	HELPPRM_OLD_FILE_NAME            = 'OLD_FILE_NAME';
+	HELPPRM_NEW_FILE_NAME            = 'NEW_FILE_NAME';
+	HELPPRM_ARCHIVE_FILE_TYPE        = 'ARCHIVE_FILE_TYPE';
+	HELPPRM_ARCHIVE_FILE_2           = 'ARCHIVE_FILE_2';
+	HELPPRM_ARCHIVE_FILE_OR_FOLDER   = 'ARCHIVE_FILE_OR_FOLDER';
+	HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 = 'ARCHIVE_FILE_OR_FOLDER_2';
+	HELPPRM_DIFF_FILE_FOLDER         = 'DIFF_FILE_FOLDER';
+	HELPPRM_DIFF_FILE_FOLDER_NAME    = 'DIFF_FILE_FOLDER_NAME';
+	HELPPRM_OLD_DIFF_FILE_FOLDER     = 'OLD_DIFF_FILE_FOLDER';
+	HELPPRM_SCRIPT_FOLDER            = 'SCRIPT_FOLDER';
+	HELPPRM_FILE_TO_XX_X             = 'FILE_TO_XX_?';
 
 
 procedure colorWriteLn(str: string; color: word);
@@ -111,8 +110,9 @@ begin
 	WriteLn('mmarch create <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_ARCHIVE_FILE_TYPE + '> <' + HELPPRM_FOLDER + '> [' + HELPPRM_FILE_TO_ADD_1 + '] [' + HELPPRM_FILE_TO_ADD_2 + '] [...]');
 	WriteLn('mmarch merge <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_ARCHIVE_FILE_2 + '>');
 	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '>');
-	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> {nsis|batch|filesonly} <' + HELPPRM_DIFF_FOLDER + '>');
-	WriteLn('mmarch compare-files-to-{nsis|batch} <' + HELPPRM_DIFF_FOLDER + '> <' + HELPPRM_SCRIPT_FOLDER + '>');
+	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> {nsis|batch} <' + HELPPRM_SCRIPT_FOLDER + '> <' + HELPPRM_DIFF_FILE_FOLDER_NAME + '>');
+	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> filesonly <' + HELPPRM_DIFF_FILE_FOLDER + '>');
+	WriteLn('mmarch compare-files-to-{nsis|batch} <' + HELPPRM_OLD_DIFF_FILE_FOLDER + '> <' + HELPPRM_SCRIPT_FOLDER + '> <' + HELPPRM_DIFF_FILE_FOLDER_NAME + '>');
 	WriteLn('mmarch optimize <' + HELPPRM_ARCHIVE_FILE + '>');
 	WriteLn('mmarch help');
 
@@ -168,7 +168,7 @@ begin
 end;
 
 
-function trimCharsRight(str: string; charToTrim: char; char2ToTrim: char): string;
+function trimCharsRight(str: string; charToTrim, char2ToTrim: char): string;
 var
 	n: integer;
 begin
@@ -585,47 +585,6 @@ begin
 end;
 
 
-procedure createDirRecur(dir: string);
-var
-	currentDir, absDir: string;
-begin
-	currentDir := GetCurrentDir;
-	absDir := withTrailingSlash(currentDir) + beautifyPath(dir);
-	if not DirectoryExists(absDir) then
-		ForceDirectories(absDir);
-end;
-
-
-procedure copyFile0(oldFile, newFile: string);
-var
-	currentDir: string;
-begin
-	currentDir := GetCurrentDir;
-	createDirRecur(ExtractFilePath(newFile));
-	CopyFile(
-		PAnsiChar(withTrailingSlash(currentDir) + beautifyPath(oldFile)),
-		PAnsiChar(withTrailingSlash(currentDir) + beautifyPath(newFile)),
-		false
-	);
-end;
-
-
-function createEmptyFile(filePath: string): boolean;
-var
-	currentDir: string;
-	f: textfile;
-begin
-	currentDir := GetCurrentDir;
-	createDirRecur(ExtractFilePath(filePath));
-	AssignFile(f, withTrailingSlash(currentDir) + filePath);
-	{$I-}
-	Rewrite(f);
-	{$I+}
-	Result := IOResult = 0;
-	CloseFile(f);
-end;
-
-
 procedure compareArchive(oldArchive, newArchive: string; var addedFileList, modifiedFileList, deletedFileList: TStringList);
 var
 	oldArchi, newArchi: TRSMMArchive;
@@ -672,9 +631,42 @@ begin
 end;
 
 
+procedure generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList; isNsis: boolean);
+// isNsis is true : NSIS
+// isNsis is false: Batch
+var
+	elTemp: string;
+begin
+
+	writeln('deletedFolderList');
+	for elTemp in deletedFolderList do
+	begin
+		writeln(elTemp);
+	end;
+
+	writeln('deletedNonResFileList');
+	for elTemp in deletedNonResFileList do
+	begin
+		writeln(elTemp);
+	end;
+
+	writeln('deletedResFileList');
+	for elTemp in deletedResFileList do
+	begin
+		writeln(elTemp);
+	end;
+
+	writeln('modifiedArchiveList');
+	for elTemp in modifiedArchiveList do
+	begin
+		writeln(elTemp);
+	end;
+
+end;
 
 
-procedure compareBase(oldArchiveOrFolder, newArchiveOrFolder: string; copyToFolder: string = '');
+procedure compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder: string;
+			var deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList); overload;
 var
 	oldFolderList,
 	newFolderList,
@@ -695,7 +687,7 @@ var
 	
 	allList: TStringList;
 
-	elTemp, elTemp2, archResSeparator, slash,
+	elTemp, elTemp2, archResSeparator,
 	oldArchivePath, newArchivePath, pathTemp: string;
 
 	oldArchiveOrFolderLen, newArchiveOrFolderLen,
@@ -708,11 +700,6 @@ var
 
 begin
 	archResSeparator := ':';
-	{$IFDEF MSWINDOWS}
-		slash := '\';
-	{$ELSE}
-		slash := '/';
-	{$ENDIF}
 
 	oldArchiveOrFolderLen := length(withTrailingSlash(beautifyPath(oldArchiveOrFolder)));
 	newArchiveOrFolderLen := length(withTrailingSlash(beautifyPath(newArchiveOrFolder)));
@@ -935,8 +922,16 @@ begin
 
 	end;
 
+	if deletedFolderList0 <> nil then
+	begin
+		// deletedFolderList0.Assign(deletedFolderList);
+		// deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList
+	end;
 
-// mmarch k .///\/test/compare_test_from ./\///\test/compare_test_to
+
+
+// mmarch k .///\/test/compare_test_from ./\///\test/compare_test_to filesonly res
+
 
 	oldFolderList.Free;
 	newFolderList.Free;
@@ -948,39 +943,100 @@ begin
 	modifiedFileList.Free;
 	deletedFileList.Free;
 
+end;
+
+
+procedure compareBase(oldArchiveOrFolder, newArchiveOrFolder: string; copyToFolder: string = ''); overload;
+var
+	deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList;
+
+begin
+
+	deletedFolderList := nil;
+	deletedNonResFileList := nil;
+	deletedResFileList := nil;
+	modifiedArchiveList := nil;
+
+	compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder,
+				deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList);
 
 end;
 
 
-procedure compareReport(oldArchiveOrFolder: string; newArchiveOrFolder: string);
+procedure compareReport(oldArchiveOrFolder, newArchiveOrFolder: string);
 begin
-	compareBase(oldArchiveOrFolder, newArchiveOrFolder, 'res');
+	compareBase(oldArchiveOrFolder, newArchiveOrFolder);
 end;
 
-procedure compareFilesonly(oldArchiveOrFolder: string; newArchiveOrFolder: string);
+procedure compareFilesonly(oldArchiveOrFolder, newArchiveOrFolder, diffFileFolderName: string);
 begin
+	compareBase(oldArchiveOrFolder, newArchiveOrFolder, diffFileFolderName);
+end;
+
+procedure compareFilesToAny(isNsis: boolean);
+var
+	oldDiffFileFolder, scriptFolder, diffFileFolderName: string;
+	deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList;
+begin
+
+	oldDiffFileFolder := ParamStr(2);
+	scriptFolder := ParamStr(3);
+	diffFileFolderName := ParamStr(4);
+
+	if (oldDiffFileFolder = '') or (scriptFolder = '') or (diffFileFolderName = '') then
+		raise MissingParamException.Create(InsufficientParameters);
+
+	deletedFolderList     := TStringList.Create;
+	deletedNonResFileList := TStringList.Create;
+	deletedResFileList    := TStringList.Create;
+	modifiedArchiveList   := TStringList.Create;
+
+	// ...
+
+	generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, isNsis);
+
 end;
 
 procedure compareFilesToNsis;
 begin
+	compareFilesToAny(true);
 end;
 
 procedure compareFilesToBatch;
 begin
+	compareFilesToAny(false);
 end;
 
-procedure compareNsis(oldArchiveOrFolder: string; newArchiveOrFolder: string);
+procedure compareAny(oldArchiveOrFolder, newArchiveOrFolder, scriptFolder, diffFileFolderName: string; isNsis: boolean);
+var
+	deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList;
 begin
+
+	deletedFolderList     := TStringList.Create;
+	deletedNonResFileList := TStringList.Create;
+	deletedResFileList    := TStringList.Create;
+	modifiedArchiveList   := TStringList.Create;
+
+	compareBase(oldArchiveOrFolder, newArchiveOrFolder, withTrailingSlash(scriptFolder) + diffFileFolderName,
+				deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList);
+	generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, isNsis);
+
 end;
 
-procedure compareBatch(oldArchiveOrFolder: string; newArchiveOrFolder: string);
+procedure compareNsis(oldArchiveOrFolder, newArchiveOrFolder, scriptFolder, diffFileFolderName: string);
 begin
+	compareAny(oldArchiveOrFolder, newArchiveOrFolder, scriptFolder, diffFileFolderName, true);
+end;
+
+procedure compareBatch(oldArchiveOrFolder, newArchiveOrFolder, scriptFolder, diffFileFolderName: string);
+begin
+	compareAny(oldArchiveOrFolder, newArchiveOrFolder, scriptFolder, diffFileFolderName, true);
 end;
 
 
 procedure compare;
 var
-	archiveFile2, option: string;
+	archiveFile2, option, p5, p6: string;
 	optionNumber: integer;
 
 begin
@@ -995,13 +1051,22 @@ begin
 	['nsis',
 	'batch',
 	'filesonly',
-	'report', '']);
+	'']);
+
+	p5 := ParamStr(5);
+	p6 := ParamStr(6);
+
+	if (p5 = '') and (optionNumber < 3) then
+		raise MissingParamException.Create(InsufficientParameters);
+
+	if (p6 = '') and (optionNumber < 2) then
+		raise MissingParamException.Create(InsufficientParameters);
 
 	Case optionNumber of
-		0: compareNsis(archiveFile, archiveFile2);
-		1: compareBatch(archiveFile, archiveFile2);
-		2: compareFilesonly(archiveFile, archiveFile2);
-		3,  4: compareReport(archiveFile, archiveFile2);
+		0: compareNsis(archiveFile, archiveFile2, p5, p6);
+		1: compareBatch(archiveFile, archiveFile2, p5, p6);
+		2: compareFilesonly(archiveFile, archiveFile2, p5);
+		3: compareReport(archiveFile, archiveFile2);
 	else // -1: not found in the array
 		raise MissingParamException.CreateFmt(UnknownCompareOption, [option]);
 	end;
