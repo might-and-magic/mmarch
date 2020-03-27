@@ -182,25 +182,57 @@ mmarch merge events.lod events2.lod
 
 ## `compare`
 
-```
-mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> [OPTION] [DIFF_FOLDER]
-```
-
 Compare two archive files, or two folders containing archive files and/or files of any other type.
 
 (`k` is short for `compare`)
 
-`[OPTION]`:
+The fourth parameter, `[OPTION]`, can be:
 
-* **not specified or `report`**: print a comparison report
-* **`nsis`**: same as `filesonly` option, but also generate a .nsi script file which can be compiled to a .exe patch installation file using [NSIS](https://nsis.sourceforge.io/). Diff files will be put into DIFF_FOLDER's subfolder named `diff` and the script will be put in the DIFF_FOLDER. Read [§ NSIS-compiled patch installer](#nsis-compiled-patch-installer) for following steps
-* **`batch`**: same as `filesonly` option, but also generate a .bat (Window Batch) file which can work along with your DIFF_FOLDER and mmarch.exe. Diff files will be put into DIFF_FOLDER's subfolder named `diff` and the script will be put in the DIFF_FOLDER. Read [§ Batch patch installer](#batch-patch-installer) for following steps
-* **`filesonly`**: copy non-resource file and extract in-archive resource files that are different (incl. added, modified or deleted. read [§ Details](#details-of-diff_folder-of-compare) if needed) in the two `ARCHIVE_FILE_OR_FOLDER`, these copied/extracted files will be put into `[DIFF_FOLDER]` (which is required if you use `filesonly`, `nsis` or `batch` as `[OPTION]`)
+### not specified
+
+```
+mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2>
+```
+
+Print a comparison report.
+
+### `nsis`
+
+```
+mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> nsis <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>
+```
+
+Generate a .nsi script file in `SCRIPT_FOLDER` which can be compiled to a .exe patch installation file using [NSIS](https://nsis.sourceforge.io/). Diff files (same as with `filesonly` option) will be copied to `SCRIPT_FOLDER`'s subfolder named with `DIFF_FILE_FOLDER_NAME` (it's a name, not a path). Read [§ NSIS-compiled patch installer](#nsis-compiled-patch-installer) for the following steps.
+
+### `batch`
+
+```
+mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> batch <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>
+```
+
+Generate a .bat (Window Batch) file in `SCRIPT_FOLDER`  which can work along with your DIFF_FILE_FOLDER and mmarch.exe. Diff files (same as with `filesonly` option) will be copied to `SCRIPT_FOLDER`'s subfolder named with `DIFF_FILE_FOLDER_NAME` (it's a name, not a path). Read [§ Batch patch installer](#batch-patch-installer) for the following steps.
+
+### `filesonly`
+
+```
+mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> filesonly <DIFF_FILE_FOLDER>
+```
+
+Copy all diff files (i.e. non-resource file and extract in-archive resource files that are different, including added, modified or deleted. read [§ Details](#details-of-diff_file_folder-of-compare) if needed) in the two `ARCHIVE_FILE_OR_FOLDER`s, to `DIFF_FILE_FOLDER`.
+
+### `compare-files-to-nsis`/`-batch`
 
 There are also two special commands:
 
-* `mmarch compare-files-to-nsis <DIFF_FOLDER> <SCRIPT_FOLDER>` (`cf2n` is short for `compare-files-to-nsis`): generate a .nsi script file according to the `[DIFF_FOLDER]` that you get using `filesonly` option of `mmarch compare`
-* `mmarch compare-files-to-batch <DIFF_FOLDER> <SCRIPT_FOLDER>` (`cf2b` is short for `compare-files-to-batch`): generate a .bat (Window Batch) file according to the `[DIFF_FOLDER]` that you get using `filesonly` option of `mmarch compare`
+```
+mmarch compare-files-to-nsis <OLD_DIFF_FILE_FOLDER> <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>
+or
+mmarch compare-files-to-batch <OLD_DIFF_FILE_FOLDER> <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>
+```
+
+(`cf2n` is short for `compare-files-to-nsis`; `cf2b` is short for `compare-files-to-batch`)
+
+The former command generates a .nsi script file, while the later command generates a .bat (Window Batch) file in the `SCRIPT_FOLDER`, according to the files in `[OLD_DIFF_FILE_FOLDER]` that you get using `filesonly` option of `mmarch compare`. `[OLD_DIFF_FILE_FOLDER]` will then be moved to `SCRIPT_FOLDER` (becoming its subfolder) and renamed with `DIFF_FILE_FOLDER_NAME`.
 
 **Examples:**
 
@@ -209,12 +241,14 @@ mmarch compare events.lod events2.lod
 ```
 
 ```
-mmarch compare game_folder_old game_folder_new nsis diff
+mmarch compare game_folder_old game_folder_new nsis nsis_folder files
 ```
 
+will have the same effect as
+
 ```
-mmarch compare game_folder_old game_folder_new filesonly diff
-mmarch compare-files-to-nsis diff .
+mmarch compare game_folder_old game_folder_new filesonly diff_folder
+mmarch compare-files-to-nsis diff_folder nsis_folder files
 ```
 
 ## `optimize`
@@ -370,13 +404,13 @@ Official Might and Magic VI and VII has some sprites with incorrect palette:
 
 **mmarch** will not fix their problem and will skip these sprite bitmaps (though GrayFace's MMArchive can fix them). However, you may find these sprites bitmap files well extracted with correct palette in [`fixedsprites.zip` in the repo](https://github.com/might-and-magic/mmarch/blob/master/fixedsprites.zip).
 
-### Details of `[DIFF_FOLDER]` of `compare`
+### Details of `DIFF_FILE_FOLDER` of `compare`
 
-* `[DIFF_FOLDER]` of `mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> {filesonly|nsis|batch} [DIFF_FOLDER]`:
-  * if a file is not present in old FOLDER and is added in the new FOLDER, then it will be copied to `[DIFF_FOLDER]`
-  * if a file is present in old FOLDER and is deleted in the new FOLDER, then an **empty file named `FILENAME.todelete`** will be put into `[DIFF_FOLDER]`
-  * if a non-MM Archive file is present in old FOLDER and is modified in the new FOLDER, then it will be copied to `[DIFF_FOLDER]`
-  * if an MM Archive file is present in old FOLDER and is modified in the new FOLDER, then a **folder named `FILENAME.mmarchive`** will be created and:
+* `DIFF_FILE_FOLDER` of `mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> {filesonly|nsis|batch}`:
+  * if a file is not present in old ARCHIVE_FILE_OR_FOLDER and is added in the new ARCHIVE_FILE_OR_FOLDER, then it will be copied to `DIFF_FILE_FOLDER`
+  * if a file is present in old ARCHIVE_FILE_OR_FOLDER and is deleted in the new ARCHIVE_FILE_OR_FOLDER, then an **empty file named `FILENAME.todelete`** will be put into `DIFF_FILE_FOLDER`
+  * if a non-MM Archive file is present in old ARCHIVE_FILE_OR_FOLDER and is modified in the new ARCHIVE_FILE_OR_FOLDER, then it will be copied to `DIFF_FILE_FOLDER`
+  * if an MM Archive file is present in old ARCHIVE_FILE_OR_FOLDER and is modified in the new ARCHIVE_FILE_OR_FOLDER, then a **folder named `FILENAME.mmarchive`** will be created and:
     * if a resource file is not present in old ARCHIVE_FILE and is added in the new ARCHIVE_FILE, then it will be copied into `FILENAME.mmarchive` folder
     * if a resource file is present in old ARCHIVE_FILE and is deleted in the new ARCHIVE_FILE, then an empty file named `FILENAME.todelete` will be put into `FILENAME.mmarchive` folder
     * if a resource file is present in old ARCHIVE_FILE and is modified in the new ARCHIVE_FILE, then it will be copied to `FILENAME.mmarchive` folder
@@ -385,22 +419,24 @@ Official Might and Magic VI and VII has some sprites with incorrect palette:
 
 **mmarch** can be used with [batch file](https://en.wikibooks.org/wiki/Windows_Batch_Scripting) (.bat) or [NSIS script](https://nsis.sourceforge.io/Main_Page) to produce game patch or MOD installation files. Also, with [Python](https://www.python.org/), [JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript), batch files, [PowerShell](https://docs.microsoft.com/en-us/powershell/) script, etc., **mmarch** can automatize the workflow of the development of Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 MODs and patches.
 
-Other useful tools that can be used by MM MOD/patch developers include Smacker (.smk) and Bink (.bik) video file formats' original developer's official [The RAD Video Tools](http://www.radgametools.com/bnkdown.htm) (to extract and replace sound from .bik and .smk videos. Essential tool for game video localization), hash tools ([certutil](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/certutil), [NSIS Crypto plug-in](https://nsis.sourceforge.io/Crypto_plug-in), ...), etc.
+In case you need it, Smacker (.smk) and Bink (.bik) video file formats' original developer's official [The RAD Video Tools](http://www.radgametools.com/bnkdown.htm) can be used to extract and replace sound from .bik and .smk videos. This is essential for game video localization.
+
+No matter you have a Might and Magic project (with MM archive files) or non MM projects (without MM archive files), you can read the following sections and learn how to use **mmarch** to easily compare old and new folders, in order to make a patch.
 
 ### NSIS-compiled patch installer
 
-[`mmarch compare <OLD_FOLDER> <NEW_FOLDER> nsis [DIFF_FOLDER]`](#compare) will compare two folders, copy all different files (including the in-archive resource files) into the [DIFF_FOLDER] and generate a .nsi script file there. You may then:
+[`mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> nsis <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>`](#nsis) will compare two folders, copy all different files (including in-archive resource files) to `DIFF_FILE_FOLDER` (which is a subfolder of `SCRIPT_FOLDER`) and generate a .nsi script file in `SCRIPT_FOLDER`. You may then:
 
 * Modify the .nsi file if needed
-* Put mmarch.exe in this [DIFF_FOLDER]
-* Compile the .nsi file to a .exe patch setup file with the latest NSIS 3.
+* Put mmarch.exe in this `SCRIPT_FOLDER`
+* Compile the .nsi file to a .exe patch setup file with the latest NSIS 3
 
 ### Batch patch installer
 
-[`mmarch compare <OLD_FOLDER> <NEW_FOLDER> batch [DIFF_FOLDER]`](#compare) will compare two folders, copy all different files (including the in-archive resource files) into the [DIFF_FOLDER] and generate a .bat (Window Batch) file there. You may then:
+[`mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> batch <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>`](#batch) will compare two folders, copy all different files (including in-archive resource files) to `DIFF_FILE_FOLDER` (which is a subfolder of `SCRIPT_FOLDER`) and generate a .bat (Window Batch) file in `SCRIPT_FOLDER`. You may then:
 
 * Modify the .bat file if needed
-* Put [DIFF_FOLDER], .bat file and mmarch.exe together in a same folder
+* Put mmarch.exe in this `SCRIPT_FOLDER`
 * Compress them into a .zip
 * Distribute the .zip to users
 
@@ -408,7 +444,9 @@ A user may:
 
 * Unzip it
 * Put everything in the game folder
-* Double click .bat file to patch the game.
+* Double click .bat file to patch the game
+
+The batch file will not perform a self-deletion, users have to delete .bat, mmarch.exe and `DIFF_FILE_FOLDER` manually.
 
 ### Other Batch scripts
 
@@ -448,7 +486,7 @@ How to compile the source of **mmarch**:
 ## Change Log
 * [2020-03-11] v1.0: initial release
 * [2020-03-18] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
-* [2020-03-23] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer
+* [2020-03-28] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer
 
 ## License
 
