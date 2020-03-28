@@ -205,51 +205,51 @@ mmarch compare events.lod events2.lod
 ### `nsis`
 
 ```
-mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> nsis <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>
+mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> nsis <SCRIPT_FILE> <DIFF_FOLDER_NAME>
 ```
 
-Generate a .nsi script file in `SCRIPT_FOLDER` which can be compiled to a .exe patch installation file using [NSIS](https://nsis.sourceforge.io/). Diff files (same as with `filesonly` option) will be copied to `SCRIPT_FOLDER`'s subfolder named with `DIFF_FILE_FOLDER_NAME` (it's a name, not a path). Read [§ NSIS-compiled patch installer](#nsis-compiled-patch-installer) for the following steps.
+Generate a .nsi script file `SCRIPT_FILE` which can be compiled to a .exe patch installation file using [NSIS](https://nsis.sourceforge.io/). Diff files (same as with `fileonly` option) will be copied to a subfolder of `SCRIPT_FILE`'s folder, and the subfolder will be named with `DIFF_FOLDER_NAME` (it's a name, not a path). Read [§ NSIS-compiled patch installer](#nsis-compiled-patch-installer) for the following steps.
 
 ### `batch`
 
 ```
-mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> batch <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>
+mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> batch <SCRIPT_FILE> <DIFF_FOLDER_NAME>
 ```
 
-Generate a .bat (Window Batch) file in `SCRIPT_FOLDER`  which can work along with your DIFF_FILE_FOLDER and mmarch.exe. Diff files (same as with `filesonly` option) will be copied to `SCRIPT_FOLDER`'s subfolder named with `DIFF_FILE_FOLDER_NAME` (it's a name, not a path). Read [§ Batch patch installer](#batch-patch-installer) for the following steps.
+Generate a .bat (Window Batch) file `SCRIPT_FILE` which can work along with your DIFF_FOLDER and mmarch.exe. Diff files (same as with `fileonly` option) will be copied to a subfolder of `SCRIPT_FILE`'s folder, and the subfolder will be named with `DIFF_FOLDER_NAME` (it's a name, not a path). Read [§ Batch patch installer](#batch-patch-installer) for the following steps.
 
-### `filesonly`
+### `fileonly`
 
 ```
-mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> filesonly <DIFF_FILE_FOLDER>
+mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> fileonly <DIFF_FOLDER>
 ```
 
-Copy all diff files (i.e. non-resource file and extract in-archive resource files that are different, including added, modified or deleted. read [§ Details](#details-of-diff_file_folder-of-compare) if needed) in the two `ARCHIVE_FILE_OR_FOLDER`s, to `DIFF_FILE_FOLDER`.
+Copy all diff files (i.e. non-resource file and extract in-archive resource files that are different, including added, modified or deleted. read [§ Details](#details-of-diff_folder-of-compare) if needed) in the two `ARCHIVE_FILE_OR_FOLDER`s, to `DIFF_FOLDER`.
 
 ### `compare-files-to-nsis`/`-batch`
 
 There are also two special commands:
 
 ```
-mmarch compare-files-to-nsis <OLD_DIFF_FILE_FOLDER> <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>
+mmarch compare-files-to-nsis <OLD_DIFF_FOLDER> <SCRIPT_FILE> <DIFF_FOLDER_NAME>
 or
-mmarch compare-files-to-batch <OLD_DIFF_FILE_FOLDER> <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>
+mmarch compare-files-to-batch <OLD_DIFF_FOLDER> <SCRIPT_FILE> <DIFF_FOLDER_NAME>
 ```
 
 (`cf2n` is short for `compare-files-to-nsis`; `cf2b` is short for `compare-files-to-batch`)
 
-The former command generates a .nsi script file, while the later command generates a .bat (Window Batch) file in the `SCRIPT_FOLDER`, according to the files in `[OLD_DIFF_FILE_FOLDER]` that you get using `filesonly` option of `mmarch compare`. `[OLD_DIFF_FILE_FOLDER]` will then be moved to `SCRIPT_FOLDER` (becoming its subfolder) and renamed with `DIFF_FILE_FOLDER_NAME`.
+The former command generates a .nsi script file, while the later command generates a .bat (Window Batch) file `SCRIPT_FILE`, according to the files in `[OLD_DIFF_FOLDER]` that you get using `fileonly` option of `mmarch compare`. `[OLD_DIFF_FOLDER]` will then be moved to `SCRIPT_FILE`'s folder (becoming its subfolder) and renamed with `DIFF_FOLDER_NAME`.
 
 **`compare` mixed examples:**
 ```
-mmarch compare game_folder_old game_folder_new nsis nsis_folder files
+mmarch compare game_folder_old game_folder_new nsis nsis_folder/script.nsi files
 ```
 
 will have the same effect as
 
 ```
-mmarch compare game_folder_old game_folder_new filesonly diff_folder
-mmarch compare-files-to-nsis diff_folder nsis_folder files
+mmarch compare game_folder_old game_folder_new fileonly diff_folder_temp
+mmarch compare-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
 ```
 
 ## `optimize`
@@ -284,7 +284,7 @@ The "Notes on `FOLDER`" applys to the argument representing a **folder path**  i
 * If folder path contains space (` `), use double quotes (`""`) to enclose the folder path
 * Path without a leading slash, or with a leading `./`: **relative path**
   * `.`: **current directory**
-  * `..`: parent directory of the current directory (use with **CAUTION!**)
+  * `..`: parent directory of the current directory (use with **CAUTION!**, not expected to work for `compare`)
 * A leading slash `/`: **absolute path** (the root being `C:\` or `D:\` or ...) (use with **CAUTION!**)
 * A trailing slash is optional. Same effect with or without it.
 * Slash (`/`) and backslash (`\`) have the same effect.
@@ -405,12 +405,12 @@ Official Might and Magic VI and VII has some sprites with incorrect palette:
 
 **mmarch** will not fix their problem and will skip these sprite bitmaps (though GrayFace's MMArchive can fix them). However, you may find these sprites bitmap files well extracted with correct palette in [`fixedsprites.zip` in the repo](https://github.com/might-and-magic/mmarch/blob/master/fixedsprites.zip).
 
-### Details of `DIFF_FILE_FOLDER` of `compare`
+### Details of `DIFF_FOLDER` of `compare`
 
-* `DIFF_FILE_FOLDER` of `mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> {filesonly|nsis|batch}`:
-  * if a file is not present in old ARCHIVE_FILE_OR_FOLDER and is added in the new ARCHIVE_FILE_OR_FOLDER, then it will be copied to `DIFF_FILE_FOLDER`
-  * if a file is present in old ARCHIVE_FILE_OR_FOLDER and is deleted in the new ARCHIVE_FILE_OR_FOLDER, then an **empty file named `FILENAME.todelete`** will be put into `DIFF_FILE_FOLDER`
-  * if a non-MM Archive file is present in old ARCHIVE_FILE_OR_FOLDER and is modified in the new ARCHIVE_FILE_OR_FOLDER, then it will be copied to `DIFF_FILE_FOLDER`
+* `DIFF_FOLDER` of `mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> {fileonly|nsis|batch}`:
+  * if a file is not present in old ARCHIVE_FILE_OR_FOLDER and is added in the new ARCHIVE_FILE_OR_FOLDER, then it will be copied to `DIFF_FOLDER`
+  * if a file is present in old ARCHIVE_FILE_OR_FOLDER and is deleted in the new ARCHIVE_FILE_OR_FOLDER, then an **empty file named `FILENAME.todelete`** will be put into `DIFF_FOLDER`
+  * if a non-MM Archive file is present in old ARCHIVE_FILE_OR_FOLDER and is modified in the new ARCHIVE_FILE_OR_FOLDER, then it will be copied to `DIFF_FOLDER`
   * if an MM Archive file is present in old ARCHIVE_FILE_OR_FOLDER and is modified in the new ARCHIVE_FILE_OR_FOLDER, then a **folder named `FILENAME.mmarchive`** will be created and:
     * if a resource file is not present in old ARCHIVE_FILE and is added in the new ARCHIVE_FILE, then it will be copied into `FILENAME.mmarchive` folder
     * if a resource file is present in old ARCHIVE_FILE and is deleted in the new ARCHIVE_FILE, then an empty file named `FILENAME.todelete` will be put into `FILENAME.mmarchive` folder
@@ -426,18 +426,18 @@ No matter you have a Might and Magic project (with MM archive files) or non MM p
 
 ### NSIS-compiled patch installer
 
-[`mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> nsis <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>`](#nsis) will compare two folders, copy all different files (including in-archive resource files) to `DIFF_FILE_FOLDER` (which is a subfolder of `SCRIPT_FOLDER`) and generate a .nsi script file in `SCRIPT_FOLDER`. You may then:
+[`mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> nsis <SCRIPT_FILE> <DIFF_FOLDER_NAME>`](#nsis) will compare the two folders, copy all different files (including in-archive resource files) to `DIFF_FOLDER_NAME` (which is a subfolder of `SCRIPT_FILE`'s folder) and generate a .nsi script file `SCRIPT_FILE`. You may then:
 
 * Modify the .nsi file if needed
-* Put mmarch.exe in this `SCRIPT_FOLDER`
+* Put mmarch.exe in the folder of the .nsi file
 * Compile the .nsi file to a .exe patch setup file with the latest NSIS 3
 
 ### Batch patch installer
 
-[`mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> batch <SCRIPT_FOLDER> <DIFF_FILE_FOLDER_NAME>`](#batch) will compare two folders, copy all different files (including in-archive resource files) to `DIFF_FILE_FOLDER` (which is a subfolder of `SCRIPT_FOLDER`) and generate a .bat (Window Batch) file in `SCRIPT_FOLDER`. You may then:
+[`mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> batch <SCRIPT_FILE> <DIFF_FOLDER_NAME>`](#batch) will compare the two folders, copy all different files (including in-archive resource files) to `DIFF_FOLDER_NAME` (which is a subfolder of `SCRIPT_FILE`'s folder) and generate a .bat (Window Batch) file `SCRIPT_FILE`. You may then:
 
 * Modify the .bat file if needed
-* Put mmarch.exe in this `SCRIPT_FOLDER`
+* Put mmarch.exe in the folder of the .bat file
 * Compress them into a .zip
 * Distribute the .zip to users
 
@@ -447,7 +447,7 @@ A user may:
 * Put everything in the game folder
 * Double click .bat file to patch the game
 
-The batch file will not perform a self-deletion, users have to delete .bat, mmarch.exe and `DIFF_FILE_FOLDER` manually.
+The batch file will not perform a self-deletion, users have to delete .bat, mmarch.exe and `DIFF_FOLDER` manually.
 
 ### Other Batch scripts
 
@@ -487,7 +487,7 @@ How to compile the source of **mmarch**:
 ## Change Log
 * [2020-03-11] v1.0: initial release
 * [2020-03-18] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
-* [2020-03-28] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer
+* [2020-03-29] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer
 
 ## License
 

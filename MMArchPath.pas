@@ -13,11 +13,16 @@ unit MMArchPath;
 interface
 
 uses
-	Windows, SysUtils, Classes, RSQ;
+	Windows, SysUtils, StrUtils, Classes, RSQ, ShellApi;
 
 type
 	OtherMmarchException = class(Exception);
 
+procedure Split(Delimiter: Char; Str: string; TStr: TStrings);
+function trimCharLeft(str: string; charToTrim: char): string;
+function trimCharsRight(str: string; charToTrim, char2ToTrim: char): string;
+function wildcardFileNameToExt(fileName: string): string;
+function wildcardArchiveNameToArchiveList(archiveName: string): TStringList;
 
 function getAllFilesInFolder(path: string; ext: string = '*'; isDir: boolean = false): TStringList;
 
@@ -30,9 +35,14 @@ function withTrailingSlash(path: string): string;
 procedure createDirRecur(dir: string);
 procedure copyFile0(oldFile, newFile: string);
 function createEmptyFile(filePath: string): boolean;
+procedure StrToFile(filePath, SourceString: string);
+function moveDir(folderFrom, folderTo: string): Boolean;
 
 const
 	nameValSeparator: char = ':';
+	archResSeparator: char = ':';
+
+	supportedExts: array[0..7] of string = ('.lod', '.pac', '.snd', '.vid', '.lwd', '.mm7', '.dod', '.mm6');
 
 	{$IFDEF MSWINDOWS}
 		slash: char = '\';
@@ -45,6 +55,125 @@ resourcestring
 
 
 implementation
+
+
+procedure Split(Delimiter: Char; Str: string; TStr: TStrings);
+begin
+	TStr.Clear;
+	TStr.Delimiter       := Delimiter;
+	TStr.StrictDelimiter := True;
+	TStr.DelimitedText   := Str;
+end;
+
+
+function trimCharLeft(str: string; charToTrim: char): string;
+var
+	n: integer;
+begin
+	n := 1;
+	while (n <= Length(str)) and (str[n] = charToTrim) do
+		Inc(n);
+	SetString(Result, PChar(@str[n]), Length(str) - n + 1);
+end;
+
+
+function trimCharsRight(str: string; charToTrim, char2ToTrim: char): string;
+var
+	n: integer;
+begin
+	n := Length(str);
+	while (n >= 1) and ((str[n] = charToTrim) or (str[n] = char2ToTrim)) do
+		Dec(n);
+	SetString(Result, PChar(@str[1]), n);
+end;
+
+
+// private
+function stringsToStringList(const Strings: array of string): TStringList;
+var
+	i: Integer;
+begin
+	Result := TStringList.Create;
+	for i := low(Strings) to high(Strings) do
+		Result.Add(Strings[i]);
+end;
+
+
+function wildcardFileNameToExt(fileName: string): string;
+begin
+	if (fileName = '*') or (fileName = '*.*') then // all files
+		Result := '*'
+	else
+	begin
+		if fileName = '*.' then // all files without extension
+			Result := ''
+		else // all files with specified extension
+			Result := trimCharLeft(fileName, '*');
+	end;
+end;
+
+
+// private
+function fileNameToExtList(fileName: string): TStringList; // Ext in Result has dot
+var
+	ext, extTemp: string;
+	ResultTemp: TStringList;
+begin
+	ext := ExtractFileExt(fileName);
+	if (fileName = '*') or (fileName = '*.*') then
+		Result := stringsToStringList(supportedExts)
+	else
+	begin
+		Result := TStringList.Create;
+		if Pos('|', fileName) > 0 then
+		begin
+			ResultTemp := TStringList.Create;
+			Split('|', trimCharLeft(ext, '.'), ResultTemp);
+			for extTemp in ResultTemp do
+				if MatchStr('.' + AnsiLowerCase(extTemp), supportedExts) then
+					Result.Add('.' + AnsiLowerCase(extTemp));
+			ResultTemp.Free;
+		end
+		else
+			Result.Add(ext);
+	end;
+end;
+
+
+function wildcardArchiveNameToArchiveList(archiveName: string): TStringList;
+var
+	path, fileName, pathRightAst, pathTemp: string;
+	extList: TStringList;
+begin
+
+	path := trimCharsRight(ExtractFilePath(archiveName), '\', '/');
+	fileName := ExtractFileName(archiveName);
+
+	extList := fileNameToExtList(fileName);
+
+	Result := TStringList.Create;
+	Result.Clear;
+	Result.NameValueSeparator := nameValSeparator;
+
+	pathRightAst := copy(path, length(path)-1, 2);
+	if pathRightAst = '**' then
+	begin
+		pathTemp := copy(path, 1, length(path)-2); // part of path where pathRightAst is substracted
+		addAllFilesToFileList(Result, pathTemp, 1, false, true, extList);
+	end
+	else
+	begin
+		pathRightAst := copy(path, length(path), 1);
+		if pathRightAst = '*' then
+		begin
+			pathTemp := copy(path, 1, length(path)-1);
+			addAllFilesToFileList(Result, pathTemp, 2, false, true, extList);
+		end
+		else
+			addAllFilesToFileList(Result, path, 3, false, true, extList);
+	end;
+	extList.Free;
+end;
 
 
 function getAllFilesInFolder(path: string; ext: string = '*'; isDir: boolean = false): TStringList;
@@ -144,7 +273,7 @@ procedure addAllFilesToFileList(var fileList: TStringList; path: string; recursi
 // `2`: in level 1 folders only
 // `3`: current folder only
 // `isDir`: directory or file
-// `extList`: file/dir extension list
+// `extList`: file/dir extension list, ext has dot
 var
 	dirListTemp: TStringList;
 	dir: string;
@@ -263,12 +392,59 @@ var
 begin
 	currentDir := GetCurrentDir;
 	createDirRecur(ExtractFilePath(filePath));
-	AssignFile(f, withTrailingSlash(currentDir) + filePath);
+	AssignFile(f, withTrailingSlash(currentDir) + beautifyPath(filePath));
 	{$I-}
 	Rewrite(f);
 	{$I+}
 	Result := IOResult = 0;
 	CloseFile(f);
+end;
+
+
+procedure StrToFile(filePath, SourceString: string);
+var
+	currentDir: string;
+	Stream: TFileStream;
+begin
+	currentDir := GetCurrentDir;
+	createDirRecur(ExtractFilePath(filePath));
+	Stream := TFileStream.Create(withTrailingSlash(currentDir) + beautifyPath(filePath), fmCreate);
+	try
+		Stream.WriteBuffer(Pointer(SourceString)^, Length(SourceString));
+	finally
+		Stream.Free;
+	end;
+end;
+
+
+function moveDir(folderFrom, folderTo: string): Boolean;
+// folderFrom, folderTo cannot be current folder or ancestor folder
+var
+	currentDir: string;
+	fos: TSHFileOpStruct;
+begin
+	currentDir := GetCurrentDir;
+	folderFrom := trimCharsRight(beautifyPath(folderFrom), '\', '/');
+	folderTo := trimCharsRight(beautifyPath(folderTo), '\', '/');
+
+	if folderFrom <> folderTo then
+	begin
+		createDirRecur(ExtractFilePath(folderTo));
+		ZeroMemory(@fos, SizeOf(fos));
+		with fos do
+		begin
+			wFunc  := FO_MOVE;
+			fFlags := FOF_FILESONLY;
+			pFrom  := PChar(withTrailingSlash(currentDir) + folderFrom + #0);
+			pTo    := PChar(withTrailingSlash(currentDir) + folderTo);
+		end;
+		Result := (0 = ShFileOperation(fos));
+	end
+	else
+	begin
+		Result := false;
+	end;
+
 end;
 
 
