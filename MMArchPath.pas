@@ -15,9 +15,6 @@ interface
 uses
 	Windows, SysUtils, StrUtils, Classes, RSQ, ShellApi;
 
-type
-	OtherMmarchException = class(Exception);
-
 procedure Split(Delimiter: Char; Str: string; TStr: TStrings);
 function trimCharLeft(str: string; charToTrim: char): string;
 function trimCharsRight(str: string; charToTrim, char2ToTrim: char): string;
@@ -214,7 +211,7 @@ begin
 
 	GetCurrentDirectory(MAX_PATH, currentDir);
 	if not DirectoryExists(path) then
-		raise OtherMmarchException.CreateFmt(DirNotFound, [path]);
+		raise Exception.CreateFmt(DirNotFound, [path]);
 
 	SetCurrentDirectory(PChar(path));
 

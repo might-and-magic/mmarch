@@ -142,7 +142,7 @@
 		<VersionInfo>
 			<VersionInfo Name="IncludeVerInfo">True</VersionInfo>
 			<VersionInfo Name="AutoIncBuild">False</VersionInfo>
-			<VersionInfo Name="MajorVer">2</VersionInfo>
+			<VersionInfo Name="MajorVer">3</VersionInfo>
 			<VersionInfo Name="MinorVer">0</VersionInfo>
 			<VersionInfo Name="Release">0</VersionInfo>
 			<VersionInfo Name="Build">0</VersionInfo>
@@ -157,13 +157,13 @@
 		<VersionInfoKeys>
 			<VersionInfoKeys Name="CompanyName">Tom CHEN</VersionInfoKeys>
 			<VersionInfoKeys Name="FileDescription">Command line tool to handle Heroes 3 &amp; Might and Magic 678 archive</VersionInfoKeys>
-			<VersionInfoKeys Name="FileVersion">2.0.0.0</VersionInfoKeys>
+			<VersionInfoKeys Name="FileVersion">3.0.0.0</VersionInfoKeys>
 			<VersionInfoKeys Name="InternalName"></VersionInfoKeys>
 			<VersionInfoKeys Name="LegalCopyright">MIT License (c) 2020 Tom CHEN</VersionInfoKeys>
 			<VersionInfoKeys Name="LegalTrademarks"></VersionInfoKeys>
 			<VersionInfoKeys Name="OriginalFilename"></VersionInfoKeys>
 			<VersionInfoKeys Name="ProductName">mmarch</VersionInfoKeys>
-			<VersionInfoKeys Name="ProductVersion">2.0.0.0</VersionInfoKeys>
+			<VersionInfoKeys Name="ProductVersion">3.0.0.0</VersionInfoKeys>
 			<VersionInfoKeys Name="Comments"></VersionInfoKeys>
 		</VersionInfoKeys>
 	</Delphi.Personality>

@@ -170,7 +170,7 @@ var
 	indexTemp: integer;
 begin
 	if fileName = '' then
-		raise OtherMmarchException.Create(FileNameEmpty);
+		raise Exception.Create(FileNameEmpty);
 
 	fileName2 := fileName;
 
@@ -262,11 +262,6 @@ begin
 			try // the individual resource file will be skipped if it gets an exception
 				arch.Extract(i, folder);
 			except
-				on E: OtherMmarchException do
-				begin
-					WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fFiles.Name[i]), beautifyPath(fFiles.FileName)]));
-					WriteLn(E.Message);
-				end;
 				on E: Exception do
 				begin
 					WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fFiles.Name[i]), beautifyPath(fFiles.FileName)]));
@@ -285,7 +280,7 @@ begin
 	fileIndex := getIndexByFileName(fileToExtract);
 
 	if fileIndex = -1 then
-		raise OtherMmarchException.CreateFmt(FileNotFound, [fileToExtract])
+		raise Exception.CreateFmt(FileNotFound, [fileToExtract])
 	else
 	begin
 		RSCreateDir(folder);
@@ -315,8 +310,6 @@ begin
 			try // the individual resource file will be skipped if it gets an exception
 				fFiles.Delete(i);
 			except
-				on E: OtherMmarchException do
-					WriteLn(format(FileErrorStr, [beautifyPath(fFiles.Name[i]), E.Message]));
 				on E: Exception do
 					WriteLn(format(FileErrorStr, [beautifyPath(fFiles.Name[i]), E.Message]));
 			end;
@@ -332,7 +325,7 @@ var
 begin
 	fileIndex := getIndexByFileName(fileToDelete);
 	if fileIndex = -1 then
-		raise OtherMmarchException.CreateFmt(FileNotFound, [fileToDelete])
+		raise Exception.CreateFmt(FileNotFound, [fileToDelete])
 	else
 		arch.RawFiles.Delete(fileIndex);
 	optimize;
@@ -350,8 +343,6 @@ begin
 		try // the individual resource file will be skipped if it gets an exception
 			add(withTrailingSlash(folder) + fileName);
 		except
-			on E: OtherMmarchException do
-				WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
 			on E: Exception do
 				WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
 		end;
@@ -433,7 +424,7 @@ var
 begin
 	fileIndex := getIndexByFileName(oldFileName);
 	if fileIndex = -1 then
-		raise OtherMmarchException.CreateFmt(FileNotFound, [oldFileName]);
+		raise Exception.CreateFmt(FileNotFound, [oldFileName]);
 	fFiles := arch.RawFiles;
 	fFiles.Rename(fileIndex, newFileName);
 	optimize;

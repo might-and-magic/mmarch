@@ -15,9 +15,6 @@ interface
 uses
 	Windows, SysUtils, StrUtils, Classes, RSLod, MMArchMain, MMArchPath, RSQ;
 
-type
-	MissingParamException = class(Exception);
-
 procedure colorWriteLn(str: string; color: word);
 function compareFile(oldFile, newFile: string): boolean;
 function compareInArchiveFile(oldRaw, newRaw: TRSMMFiles; oldIndex, newIndex: integer): boolean;
@@ -29,6 +26,14 @@ procedure compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder: stri
 procedure compareBase(oldArchiveOrFolder, newArchiveOrFolder: string; copyToFolder: string = ''); overload;
 procedure getListFromDiffFiles(oldDiffFileFolder: string; var deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList);
 
+const
+	ToDeleteExt:  string = '.todelete';
+	MMArchiveExt: string = '.mmarchive';
+
+resourcestring
+	IncorrectMMArchive           = 'Incorrect MM Archive files';
+	FilesAreSame                 = 'Files are the same';
+	IncorrectFoldersOrMMArchives = 'Please specify two folders, or two MM Archive files';
 
 implementation
 
@@ -43,6 +48,81 @@ begin
 	SetConsoleTextAttribute(TTextRec(Output).Handle, color);
 	WriteLn(str);
 	SetConsoleTextAttribute(ConOut, BufInfo.wAttributes);
+end;
+
+
+// private
+procedure colorPrintFileList(addedFileList, modifiedFileList, deletedFileList, addedFolderList, deletedFolderList: TStringList); overload;
+var
+	allList: TStringList;
+	elTemp: string;
+	i: integer;
+	color: word;
+
+begin
+
+	allList := TStringList.Create;
+
+	if addedFolderList <> nil then // addedFolderList, deletedFolderList are not nil
+	begin
+	
+		for elTemp in addedFolderList do
+			allList.Add(elTemp + slash + ' +');
+
+		for elTemp in deletedFolderList do
+			allList.Add(elTemp + slash + ' -');
+
+	end;
+
+	for elTemp in addedFileList do
+		allList.Add(elTemp + ' +');
+
+	for elTemp in modifiedFileList do
+		allList.Add(elTemp + ' m');
+
+	for elTemp in deletedFileList do
+		allList.Add(elTemp + ' -');
+
+	allList.Sort;
+
+	for i := 0 to allList.Count - 1 do
+	begin
+		elTemp := allList[i];
+		allList[i] := '[' + elTemp[length(elTemp)] + '] ' +
+					System.Copy(elTemp, 1, length(elTemp) - 2);
+	end;
+
+	WriteLn;
+	for elTemp in allList do
+	begin
+
+		if System.Copy(elTemp, 1, 3) = '[+]' then
+			color := FOREGROUND_GREEN or FOREGROUND_INTENSITY
+		else
+			if System.Copy(elTemp, 1, 3) = '[-]' then
+				color := FOREGROUND_RED or FOREGROUND_INTENSITY
+			else // '[m]'
+				color := FOREGROUND_GREEN or FOREGROUND_RED or FOREGROUND_INTENSITY;
+
+		if AnsiContainsStr(elTemp, archResSeparator) then
+			color := color or BACKGROUND_BLUE;
+		colorWriteLn(elTemp, color);
+
+	end;
+
+	allList.Free;
+
+end;
+
+
+// private
+procedure colorPrintFileList(addedFileList, modifiedFileList, deletedFileList: TStringList); overload;
+var
+	addedFolderList, deletedFolderList: TStringList;
+begin
+	addedFolderList := nil;
+	deletedFolderList := nil;
+	colorPrintFileList(addedFileList, modifiedFileList, deletedFileList, addedFolderList, deletedFolderList);
 end;
 
 
@@ -225,39 +305,51 @@ begin
 			'	SetOutPath $INSTDIR'#13#10 +
 			'	File mmarch.exe'#13#10 +
 			#13#10 +
-			'	File /r /x *.todelete ' + withTrailingSlash(beautifyPath(diffFileFolderName)) + '*.*'#13#10 +
+			'	File /r /x *' + ToDeleteExt + ' ' + withTrailingSlash(beautifyPath(diffFileFolderName)) + '*.*'#13#10 +
 			#13#10#13#10;
 
-		for elTemp in deletedFolderList do
+		if deletedFolderList.Count > 0 then
 		begin
-			scriptString := scriptString + '	RMDir /r /REBOOTOK "$INSTDIR\' + elTemp + '"'#13#10;
+			for elTemp in deletedFolderList do
+			begin
+				scriptString := scriptString + '	RMDir /r /REBOOTOK "$INSTDIR\' + elTemp + '"'#13#10;
+			end;
+			scriptString := scriptString + #13#10;
 		end;
-		scriptString := scriptString + #13#10;
 
-		for elTemp in deletedNonResFileList do
+		if deletedNonResFileList.Count > 0 then
 		begin
-			scriptString := scriptString + '	Delete "' + elTemp + '"'#13#10;
+			for elTemp in deletedNonResFileList do
+			begin
+				scriptString := scriptString + '	Delete "' + elTemp + '"'#13#10;
+			end;
+			scriptString := scriptString + #13#10;
 		end;
-		scriptString := scriptString + #13#10;
+		
+		if deletedResFileList.Count > 0 then
+		begin
+			for elTemp in deletedResFileList do
+			begin
+				tslTemp := TStringList.Create;
+				Split(archResSeparator, elTemp, tslTemp);
+				scriptString := scriptString +
+					'	nsExec::Exec ''mmarch delete "' + tslTemp[0] + '" "' + tslTemp[1] + '"'''#13#10;
+			end;
+			scriptString := scriptString + #13#10;
 
-		for elTemp in deletedResFileList do
-		begin
-			tslTemp := TStringList.Create;
-			Split(archResSeparator, elTemp, tslTemp);
-			scriptString := scriptString +
-				'	nsExec::Exec ''mmarch delete "' + tslTemp[0] + '" "' + tslTemp[1] + '"'''#13#10 +
-				'	Delete "' + tslTemp[0] + '.mmarchive\' + tslTemp[1] + '"'#13#10;
 		end;
-		scriptString := scriptString + #13#10;
-
-		for elTemp in modifiedArchiveList do
+		
+		if modifiedArchiveList.Count > 0 then
 		begin
-			strTemp := System.Copy(elTemp, 1, length(elTemp) - 1);
-			scriptString := scriptString +
-				'	nsExec::Exec ''mmarch add "' + strTemp + '" "' + strTemp + '.mmarchive\*.*"'''#13#10 +
-				'	RMDir /r /REBOOTOK "$INSTDIR\' + strTemp + '.mmarchive"'#13#10;
+			for elTemp in modifiedArchiveList do
+			begin
+				strTemp := System.Copy(elTemp, 1, length(elTemp) - 1);
+				scriptString := scriptString +
+					'	nsExec::Exec ''mmarch add "' + strTemp + '" "' + strTemp + MMArchiveExt + '\*.*"'''#13#10 +
+					'	RMDir /r /REBOOTOK "$INSTDIR\' + strTemp + MMArchiveExt + '"'#13#10;
+			end;
+			scriptString := scriptString + #13#10;
 		end;
-		scriptString := scriptString + #13#10;
 
 		scriptString := scriptString + #13#10 +
 			'	Delete "mmarch.exe"'#13#10 +
@@ -272,7 +364,7 @@ begin
 
 		scriptString := 'cd %~dp0'#13#10 +
 			#13#10 +
-			'echo .todelete>excludelist.txt'#13#10 +
+			'echo ' + ToDeleteExt + '>excludelist.txt'#13#10 +
 			'Xcopy files . /s /e /y /EXCLUDE:excludelist.txt'#13#10 +
 			'del excludelist.txt'#13#10 +
 			#13#10#13#10;
@@ -294,8 +386,7 @@ begin
 			tslTemp := TStringList.Create;
 			Split(archResSeparator, elTemp, tslTemp);
 			scriptString := scriptString +
-				'mmarch delete "' + tslTemp[0] + '" "' + tslTemp[1] + '"'#13#10 +
-				'Delete "' + tslTemp[0] + '.mmarchive\' + tslTemp[1] + '"'#13#10;
+				'mmarch delete "' + tslTemp[0] + '" "' + tslTemp[1] + '"'#13#10;
 		end;
 		scriptString := scriptString + #13#10;
 
@@ -303,8 +394,8 @@ begin
 		begin
 			strTemp := System.Copy(elTemp, 1, length(elTemp) - 1);
 			scriptString := scriptString +
-				'mmarch add "' + strTemp + '" "' + strTemp + '.mmarchive\*.*"'#13#10 +
-				'rmdir /s /q "' + strTemp + '.mmarchive"'#13#10;
+				'mmarch add "' + strTemp + '" "' + strTemp + MMArchiveExt + '\*.*"'#13#10 +
+				'rmdir /s /q "' + strTemp + MMArchiveExt + '"'#13#10;
 		end;
 
 	end;
@@ -332,163 +423,179 @@ var
 
 	addedFileListTemp,
 	modifiedFileListTemp,
-	deletedFileListTemp,
-	
-	allList: TStringList;
+	deletedFileListTemp: TStringList;
 
-	elTemp, elTemp2,
-	oldArchivePath, newArchivePath, pathTemp: string;
+	elTemp, elTemp2, nameTemp,
+	oldArchivePath, newArchivePath: string;
 
 	oldArchiveOrFolderLen, newArchiveOrFolderLen,
 
 	i, nTemp: integer;
 
-	color: word;
-
 	archSimpNew: MMArchSimple;
 
 begin
 
-	oldArchiveOrFolderLen := length(withTrailingSlash(beautifyPath(oldArchiveOrFolder)));
-	newArchiveOrFolderLen := length(withTrailingSlash(beautifyPath(newArchiveOrFolder)));
+	oldArchiveOrFolder := beautifyPath(oldArchiveOrFolder);
+	newArchiveOrFolder := beautifyPath(newArchiveOrFolder);
 
-	oldFolderList := TStringList.Create;
-	newFolderList := TStringList.Create;
-
-	addAllFilesToFileList(oldFolderList, oldArchiveOrFolder, 1, true, false);
-	addAllFilesToFileList(newFolderList, newArchiveOrFolder, 1, true, false);
-
-	for i := 0 to oldFolderList.Count - 1 do // remove root from path
+	if DirectoryExists(oldArchiveOrFolder) and DirectoryExists(newArchiveOrFolder) then // oldArchiveOrFolder and newArchiveOrFolder are folders
 	begin
-		elTemp := oldFolderList[i];
-		System.Delete(elTemp, 1, oldArchiveOrFolderLen);
-		oldFolderList[i] := elTemp;
-	end;
 
-	for i := 0 to newFolderList.Count - 1 do // remove root from path
-	begin
-		elTemp := newFolderList[i];
-		System.Delete(elTemp, 1, newArchiveOrFolderLen);
-		newFolderList[i] := elTemp;
-	end;
+		oldArchiveOrFolderLen := length(withTrailingSlash(oldArchiveOrFolder));
+		newArchiveOrFolderLen := length(withTrailingSlash(newArchiveOrFolder));
 
-	oldFileList := TStringList.Create;
-	newFileList := TStringList.Create;
+		oldFolderList := TStringList.Create;
+		newFolderList := TStringList.Create;
 
-	addAllFilesToFileList(oldFileList, oldArchiveOrFolder, 1, false, false);
-	addAllFilesToFileList(newFileList, newArchiveOrFolder, 1, false, false);
+		addAllFilesToFileList(oldFolderList, oldArchiveOrFolder, 1, true, false);
+		addAllFilesToFileList(newFolderList, newArchiveOrFolder, 1, true, false);
 
-	for i := 0 to oldFileList.Count - 1 do // remove root from path
-	begin
-		elTemp := oldFileList[i];
-		System.Delete(elTemp, 1, oldArchiveOrFolderLen);
-		oldFileList[i] := elTemp;
-	end;
-
-	for i := 0 to newFileList.Count - 1 do // remove root from path
-	begin
-		elTemp := newFileList[i];
-		System.Delete(elTemp, 1, newArchiveOrFolderLen);
-		newFileList[i] := elTemp;
-	end;
-
-	addedFolderList := TStringList.Create;
-	deletedFolderList := TStringList.Create;
-
-	for elTemp in newFolderList do // add to added & modified list
-	begin
-		nTemp := oldFolderList.IndexOf(elTemp);
-		if nTemp = -1 then
+		for i := 0 to oldFolderList.Count - 1 do // remove root from path
 		begin
-			addedFolderList.Add(elTemp);
-
-			if copyToFolder <> '' then // if needs file copy
-			begin
-				createDirRecur(withTrailingSlash(copyToFolder) + elTemp);
-			end;
-		end
-		else
-			oldFolderList.Delete(nTemp);
-	end;
-
-	for elTemp in oldFolderList do // add to deleted list
-	begin
-		deletedFolderList.Add(elTemp);
-
-		if copyToFolder <> '' then // if needs file copy
-		begin
-			createDirRecur(withTrailingSlash(copyToFolder) + elTemp + '.todelete');
+			elTemp := oldFolderList[i];
+			System.Delete(elTemp, 1, oldArchiveOrFolderLen);
+			oldFolderList[i] := elTemp;
 		end;
-	end;
 
-
-	addedFileList := TStringList.Create;
-	modifiedFileList := TStringList.Create;
-	deletedFileList := TStringList.Create;
-
-	for elTemp in newFileList do // add to added & modified list
-	begin
-		nTemp := oldFileList.IndexOf(elTemp);
-		if nTemp = -1 then
+		for i := 0 to newFolderList.Count - 1 do // remove root from path
 		begin
-			addedFileList.Add(elTemp);
+			elTemp := newFolderList[i];
+			System.Delete(elTemp, 1, newArchiveOrFolderLen);
+			newFolderList[i] := elTemp;
+		end;
+
+		oldFileList := TStringList.Create;
+		newFileList := TStringList.Create;
+
+		addAllFilesToFileList(oldFileList, oldArchiveOrFolder, 1, false, false);
+		addAllFilesToFileList(newFileList, newArchiveOrFolder, 1, false, false);
+
+		for i := 0 to oldFileList.Count - 1 do // remove root from path
+		begin
+			elTemp := oldFileList[i];
+			System.Delete(elTemp, 1, oldArchiveOrFolderLen);
+			oldFileList[i] := elTemp;
+		end;
+
+		for i := 0 to newFileList.Count - 1 do // remove root from path
+		begin
+			elTemp := newFileList[i];
+			System.Delete(elTemp, 1, newArchiveOrFolderLen);
+			newFileList[i] := elTemp;
+		end;
+
+		addedFolderList := TStringList.Create;
+		deletedFolderList := TStringList.Create;
+
+		for elTemp in newFolderList do // add to added & modified list
+		begin
+			nTemp := oldFolderList.IndexOf(elTemp);
+			if nTemp = -1 then
+			begin
+				addedFolderList.Add(elTemp);
+
+				if copyToFolder <> '' then // if needs file copy
+				begin
+					createDirRecur(withTrailingSlash(copyToFolder) + elTemp);
+				end;
+			end
+			else
+				oldFolderList.Delete(nTemp);
+		end;
+
+		for elTemp in oldFolderList do // add to deleted list
+		begin
+			deletedFolderList.Add(elTemp);
 
 			if copyToFolder <> '' then // if needs file copy
 			begin
-				copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
+				createDirRecur(withTrailingSlash(copyToFolder) + elTemp + ToDeleteExt);
 			end;
-		end
-		else
+		end;
+
+
+		addedFileList := TStringList.Create;
+		modifiedFileList := TStringList.Create;
+		deletedFileList := TStringList.Create;
+
+		for elTemp in newFileList do // add to added & modified list
 		begin
-			oldFileList.Delete(nTemp);
-			oldArchivePath := withTrailingSlash(beautifyPath(oldArchiveOrFolder)) + elTemp;
-			newArchivePath := withTrailingSlash(beautifyPath(newArchiveOrFolder)) + elTemp;
+			nTemp := oldFileList.IndexOf(elTemp);
+			if nTemp = -1 then
+			begin
+				addedFileList.Add(elTemp);
 
-			if not compareFile(oldArchivePath, newArchivePath) then
-				if MatchStr(AnsiLowerCase(ExtractFileExt(elTemp)), supportedExts) then // has MM Archive extension and likely MM Archive file
+				if copyToFolder <> '' then // if needs file copy
 				begin
-					addedFileListTemp := TStringList.Create;
-					modifiedFileListTemp := TStringList.Create;
-					deletedFileListTemp := TStringList.Create;
+					copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
+				end;
+			end
+			else
+			begin
+				oldFileList.Delete(nTemp);
+				oldArchivePath := withTrailingSlash(beautifyPath(oldArchiveOrFolder)) + elTemp;
+				newArchivePath := withTrailingSlash(beautifyPath(newArchiveOrFolder)) + elTemp;
 
-					try // try it as if it's MM Archive file
-						compareArchive(oldArchivePath, newArchivePath,
-										addedFileListTemp, modifiedFileListTemp, deletedFileListTemp);
-						archSimpNew := MMArchSimple.load(newArchivePath);
+				if not compareFile(oldArchivePath, newArchivePath) then
+					if MatchStr(AnsiLowerCase(ExtractFileExt(elTemp)), supportedExts) then // has MM Archive extension and likely MM Archive file
+					begin
+						addedFileListTemp := TStringList.Create;
+						modifiedFileListTemp := TStringList.Create;
+						deletedFileListTemp := TStringList.Create;
 
-						for elTemp2 in addedFileListTemp do
-						begin
-							addedFileList.Add(elTemp + archResSeparator + elTemp2);
-							
+						try // try it as if it's MM Archive file
+							compareArchive(oldArchivePath, newArchivePath,
+											addedFileListTemp, modifiedFileListTemp, deletedFileListTemp);
+							archSimpNew := MMArchSimple.load(newArchivePath);
+
+							for elTemp2 in addedFileListTemp do
+							begin
+								addedFileList.Add(elTemp + archResSeparator + elTemp2);
+								
+								if copyToFolder <> '' then // if needs file copy
+								begin
+									archSimpNew.extract(withTrailingSlash(copyToFolder) + elTemp + MMArchiveExt, elTemp2);
+								end;
+							end;
+
+							for elTemp2 in modifiedFileListTemp do
+							begin
+								modifiedFileList.Add(elTemp + archResSeparator + elTemp2);
+								
+								if copyToFolder <> '' then // if needs file copy
+								begin
+									archSimpNew.extract(withTrailingSlash(copyToFolder) + elTemp + MMArchiveExt, elTemp2);
+								end;
+							end;
+
+							for elTemp2 in deletedFileListTemp do
+							begin
+								deletedFileList.Add(elTemp + archResSeparator + elTemp2);
+
+								if copyToFolder <> '' then // if needs file copy
+								begin
+									createEmptyFile(withTrailingSlash(withTrailingSlash(copyToFolder) + elTemp + MMArchiveExt) + elTemp2 + ToDeleteExt);
+								end;
+							end;
+
+							modifiedFileList.Add(elTemp + archResSeparator);
+
+						except // very unlikely to be MM Archive file
+							modifiedFileList.Add(elTemp);
+
 							if copyToFolder <> '' then // if needs file copy
 							begin
-								archSimpNew.extract(withTrailingSlash(copyToFolder) + elTemp + '.mmarchive', elTemp2);
+								copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
 							end;
 						end;
 
-						for elTemp2 in modifiedFileListTemp do
-						begin
-							modifiedFileList.Add(elTemp + archResSeparator + elTemp2);
-							
-							if copyToFolder <> '' then // if needs file copy
-							begin
-								archSimpNew.extract(withTrailingSlash(copyToFolder) + elTemp + '.mmarchive', elTemp2);
-							end;
-						end;
-
-						for elTemp2 in deletedFileListTemp do
-						begin
-							deletedFileList.Add(elTemp + archResSeparator + elTemp2);
-
-							if copyToFolder <> '' then // if needs file copy
-							begin
-								createEmptyFile(withTrailingSlash(withTrailingSlash(copyToFolder) + elTemp + '.mmarchive') + elTemp2 + '.todelete');
-							end;
-						end;
-
-						modifiedFileList.Add(elTemp + archResSeparator);
-
-					except // very unlikely to be MM Archive file
+						addedFileListTemp.Free;
+						modifiedFileListTemp.Free;
+						deletedFileListTemp.Free;
+					end
+					else // doesn't have MM Archive extension therefore not MM Archive file
+					begin
 						modifiedFileList.Add(elTemp);
 
 						if copyToFolder <> '' then // if needs file copy
@@ -497,105 +604,129 @@ begin
 						end;
 					end;
 
-					addedFileListTemp.Free;
-					modifiedFileListTemp.Free;
-					deletedFileListTemp.Free;
-				end
-				else // doesn't have MM Archive extension therefore not MM Archive file
-				begin
-					modifiedFileList.Add(elTemp);
+			end;
+		end;
 
-					if copyToFolder <> '' then // if needs file copy
-					begin
-						copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
-					end;
-				end;
+		for elTemp in oldFileList do // add to deleted list
+		begin
+			deletedFileList.Add(elTemp);
+
+			if copyToFolder <> '' then // if needs file copy
+				if deletedFolderList.IndexOf(trimCharsRight(ExtractFilePath(elTemp), '\', '/')) = -1 then
+					createEmptyFile(withTrailingSlash(copyToFolder) + elTemp + ToDeleteExt);
+		end;
+
+		colorPrintFileList(addedFileList, modifiedFileList, deletedFileList, addedFolderList, deletedFolderList);
+
+		if deletedFolderList0 <> nil then // send results to deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList
+		begin
+
+			deletedFolderList0.Assign(deletedFolderList);
+
+			for elTemp in deletedFileList do
+				if AnsiContainsStr(elTemp, archResSeparator) then
+					deletedResFileList.Add(elTemp)
+				else
+					if deletedFolderList.IndexOf(trimCharsRight(ExtractFilePath(elTemp), '\', '/')) = -1 then
+						deletedNonResFileList.Add(elTemp);
+
+			for elTemp in modifiedFileList do
+				if AnsiRightStr(elTemp, 1) = archResSeparator then
+					modifiedArchiveList.Add(elTemp);
 
 		end;
-	end;
 
-	for elTemp in oldFileList do // add to deleted list
+		oldFolderList.Free;
+		newFolderList.Free;
+		oldFileList.Free;
+		newFileList.Free;
+		addedFolderList.Free;
+		deletedFolderList.Free;
+		addedFileList.Free;
+		modifiedFileList.Free;
+		deletedFileList.Free;
+
+	end
+	else
 	begin
-		deletedFileList.Add(elTemp);
+		
+		if FileExists(oldArchiveOrFolder) and FileExists(newArchiveOrFolder) and
+			MatchStr(AnsiLowerCase(ExtractFileExt(oldArchiveOrFolder)), supportedExts) and
+			MatchStr(AnsiLowerCase(ExtractFileExt(newArchiveOrFolder)), supportedExts)
+		then // oldArchiveOrFolder and newArchiveOrFolder are likely MM Archive files
+		begin
+			if not compareFile(oldArchiveOrFolder, newArchiveOrFolder) then
+			begin
+				addedFileList := TStringList.Create;
+				modifiedFileList := TStringList.Create;
+				deletedFileList := TStringList.Create;
 
-		if copyToFolder <> '' then // if needs file copy
-			if deletedFolderList.IndexOf(trimCharsRight(ExtractFilePath(elTemp), '\', '/')) = -1 then
-				createEmptyFile(withTrailingSlash(copyToFolder) + elTemp + '.todelete');
+				try // try it as if it's MM Archive file
+					compareArchive(oldArchiveOrFolder, newArchiveOrFolder,
+									addedFileList, modifiedFileList, deletedFileList);
+					archSimpNew := MMArchSimple.load(newArchiveOrFolder);
+
+					nameTemp := ExtractFileName(newArchiveOrFolder);
+
+					for elTemp in addedFileList do
+					begin
+						if copyToFolder <> '' then // if needs file copy
+						begin
+							archSimpNew.extract(withTrailingSlash(copyToFolder) + nameTemp + MMArchiveExt, elTemp);
+						end;
+					end;
+
+					for elTemp in modifiedFileList do
+					begin
+						if copyToFolder <> '' then // if needs file copy
+						begin
+							archSimpNew.extract(withTrailingSlash(copyToFolder) + nameTemp + MMArchiveExt, elTemp);
+						end;
+					end;
+
+					for elTemp in deletedFileList do
+					begin
+						if copyToFolder <> '' then // if needs file copy
+						begin
+							createEmptyFile(withTrailingSlash(withTrailingSlash(copyToFolder) + nameTemp + MMArchiveExt) + elTemp + ToDeleteExt);
+						end;
+					end;
+
+					colorPrintFileList(addedFileList, modifiedFileList, deletedFileList);
+
+					if deletedFolderList0 <> nil then // send results to deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList
+					begin
+
+						// add nothing to deletedFolderList0 and deletedNonResFileList
+
+						for elTemp in deletedFileList do
+							deletedResFileList.Add(nameTemp + archResSeparator + elTemp);
+
+						if (addedFileList.Count > 0) and (modifiedFileList.Count > 0) then
+							modifiedArchiveList.Add(nameTemp + archResSeparator);
+
+					end;
+
+				except // very unlikely to be MM Archive file
+					raise Exception.Create(IncorrectMMArchive);
+				end;
+
+				addedFileList.Free;
+				modifiedFileList.Free;
+				deletedFileList.Free;
+			end
+			else // compareFile(oldArchiveOrFolder, newArchiveOrFolder) = true
+			begin
+				raise Exception.Create(FilesAreSame);
+			end;
+
+		end
+		else // oldArchiveOrFolder and newArchiveOrFolder are not folders, and not MMArchive files
+		begin
+			raise Exception.Create(IncorrectFoldersOrMMArchives);
+		end;
+
 	end;
-
-
-	allList := TStringList.Create;
-
-	for elTemp in addedFolderList do
-		allList.Add(elTemp + slash + ' +');
-
-	for elTemp in deletedFolderList do
-		allList.Add(elTemp + slash + ' -');
-
-	for elTemp in addedFileList do
-		allList.Add(elTemp + ' +');
-
-	for elTemp in modifiedFileList do
-		allList.Add(elTemp + ' m');
-
-	for elTemp in deletedFileList do
-		allList.Add(elTemp + ' -');
-
-	allList.Sort;
-
-	for i := 0 to allList.Count - 1 do
-	begin
-		elTemp := allList[i];
-		allList[i] := '[' + elTemp[length(elTemp)] + '] ' +
-					System.Copy(elTemp, 1, length(elTemp) - 2);
-	end;
-
-	WriteLn;
-	for elTemp in allList do
-	begin
-
-		if System.Copy(elTemp, 1, 3) = '[+]' then
-			color := FOREGROUND_GREEN or FOREGROUND_INTENSITY
-		else
-			if System.Copy(elTemp, 1, 3) = '[-]' then
-				color := FOREGROUND_RED or FOREGROUND_INTENSITY
-			else // '[m]'
-				color := FOREGROUND_GREEN or FOREGROUND_RED or FOREGROUND_INTENSITY;
-
-		if AnsiContainsStr(elTemp, archResSeparator) then
-			color := color or BACKGROUND_BLUE;
-		colorWriteLn(elTemp, color);
-
-	end;
-
-	if deletedFolderList0 <> nil then // send results to deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList
-	begin
-
-		deletedFolderList0.Assign(deletedFolderList);
-
-		for elTemp in deletedFileList do
-			if AnsiContainsStr(elTemp, archResSeparator) then
-				deletedResFileList.Add(elTemp)
-			else
-				if deletedFolderList.IndexOf(trimCharsRight(ExtractFilePath(elTemp), '\', '/')) = -1 then
-					deletedNonResFileList.Add(elTemp);
-
-		for elTemp in modifiedFileList do
-			if AnsiRightStr(elTemp, 1) = archResSeparator then
-				modifiedArchiveList.Add(elTemp);
-
-	end;
-
-	oldFolderList.Free;
-	newFolderList.Free;
-	oldFileList.Free;
-	newFileList.Free;
-	addedFolderList.Free;
-	deletedFolderList.Free;
-	addedFileList.Free;
-	modifiedFileList.Free;
-	deletedFileList.Free;
-	allList.Free;
 
 end;
 
@@ -630,7 +761,7 @@ begin
 	oldDiffFileFolderLen := length(withTrailingSlash(beautifyPath(oldDiffFileFolder)));
 
 	// deletedFolderList: .todelete [folder]
-	extListTemp.Add('.todelete');
+	extListTemp.Add(ToDeleteExt);
 	addAllFilesToFileList(deletedFolderList, oldDiffFileFolder, 1, true, false, extListTemp);
 	for i := 0 to deletedFolderList.Count - 1 do
 	begin
@@ -651,9 +782,9 @@ begin
 		deletedNonResFileList[i] := elTemp;
 
 		// deletedResFileList: .todelete [file, in .mmarchive folder]
-		if AnsiContainsStr(elTemp, '.mmarchive\') then
+		if AnsiContainsStr(elTemp, MMArchiveExt + '\') then
 		begin
-			elTemp := StringReplace(elTemp, '.mmarchive\', archResSeparator, [rfReplaceAll, rfIgnoreCase]);
+			elTemp := StringReplace(elTemp, MMArchiveExt + '\', archResSeparator, [rfReplaceAll, rfIgnoreCase]);
 			deletedResFileList.Add(elTemp);
 			deletedNonResFileList.Delete(i);
 		end
@@ -662,7 +793,7 @@ begin
 
 	// modifiedArchiveList: .mmarchive [folder]
 	extListTemp.Delete(0);
-	extListTemp.Add('.mmarchive');
+	extListTemp.Add(MMArchiveExt);
 	addAllFilesToFileList(modifiedArchiveList, oldDiffFileFolder, 1, true, false, extListTemp);
 	for i := 0 to modifiedArchiveList.Count - 1 do
 	begin

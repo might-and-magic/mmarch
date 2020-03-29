@@ -18,7 +18,6 @@ uses
 
 type
 	MissingParamException = class(Exception);
-	OtherMmarchException = class(Exception);
 
 const
 	MMARCHVERSION: string = '3.0';
@@ -187,11 +186,6 @@ begin
 						try // the individual resource file will be skipped if it gets an exception
 							archSimp.extract(extractToFolder, fileName);
 						except
-							on E: OtherMmarchException do
-							begin
-								WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fileName), beautifyPath(archiveFileList.Names[j])]));
-								WriteLn(E.Message);
-							end;
 							on E: Exception do
 							begin
 								WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fileName), beautifyPath(archiveFileList.Names[j])]));
@@ -203,11 +197,6 @@ begin
 			end;
 
 		except
-			on E: OtherMmarchException do
-			begin
-				WriteLn(format(ArchiveFileErrorStr, [beautifyPath(archiveFileList.Names[j])]));
-				WriteLn(E.Message);
-			end;
 			on E: Exception do
 			begin
 				WriteLn(format(ArchiveFileErrorStr, [beautifyPath(archiveFileList.Names[j])]));
@@ -263,8 +252,6 @@ begin
 					try // the individual resource file will be skipped if it gets an exception
 						archSimp.add(filePath, paletteIndex);
 					except
-						on E: OtherMmarchException do
-							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
 						on E: Exception do
 							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
 					end;
@@ -276,8 +263,6 @@ begin
 					try // the individual resource file will be skipped if it gets an exception
 						archSimp.add(filePath);
 					except
-						on E: OtherMmarchException do
-							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
 						on E: Exception do
 							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
 					end;
@@ -325,8 +310,6 @@ begin
 				try // the individual resource file will be skipped if it gets an exception
 					archSimp.delete(fileName);
 				except
-					on E: OtherMmarchException do
-						WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
 					on E: Exception do
 						WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
 				end;
@@ -561,10 +544,8 @@ begin
 			WriteLn;
 			help(true);
 		end;
-		on E: OtherMmarchException do
-			WriteLn(format(ErrorStr, [E.Message]));
 		on E: Exception do
-			WriteLn(E.Message);
+			WriteLn(format(ErrorStr, [E.Message]));
 	end;
 
 end.
