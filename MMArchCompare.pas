@@ -21,9 +21,9 @@ function compareInArchiveFile(oldRaw, newRaw: TRSMMFiles; oldIndex, newIndex: in
 procedure compareArchive(oldArchive, newArchive: string; var addedFileList, modifiedFileList, deletedFileList: TStringList);
 procedure generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList;
 			scriptFilePath, diffFileFolderName: string; isNsis: boolean);
-procedure compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder: string;
-			var deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList); overload;
-procedure compareBase(oldArchiveOrFolder, newArchiveOrFolder: string; copyToFolder: string = ''); overload;
+function compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder: string;
+			var deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList): boolean; overload;
+function compareBase(oldArchiveOrFolder, newArchiveOrFolder: string; copyToFolder: string = ''): boolean; overload;
 procedure getListFromDiffFiles(oldDiffFileFolder: string; var deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList);
 
 const
@@ -32,7 +32,8 @@ const
 
 resourcestring
 	IncorrectMMArchive           = 'Incorrect MM Archive files';
-	FilesAreSame                 = 'Files are the same';
+	FilesAreSame                 = 'Files are exactly the same';
+	FoldersAreSame               = 'Folders are exactly the same';
 	IncorrectFoldersOrMMArchives = 'Please specify two folders, or two MM Archive files';
 
 implementation
@@ -137,6 +138,9 @@ begin
 	memNew.LoadFromFile(newFile);
 
 	Result := (memOld.Size = memNew.Size) and CompareMem(memOld.Memory, memNew.Memory, memOld.Size);
+
+	memOld.Free;
+	memNew.Free;
 end;
 
 
@@ -198,6 +202,9 @@ begin
 			end;
 	end;
 
+	mem1.Free;
+	mem2.Free;
+
 end;
 
 
@@ -257,6 +264,11 @@ var
 
 begin
 
+	deletedFolderList.Sort;
+	deletedNonResFileList.Sort;
+	deletedResFileList.Sort;
+	modifiedArchiveList.Sort;
+
 	if isNsis then // NSIS
 	begin
 
@@ -306,7 +318,7 @@ begin
 			'	File mmarch.exe'#13#10 +
 			#13#10 +
 			'	File /r /x *' + ToDeleteExt + ' ' + withTrailingSlash(beautifyPath(diffFileFolderName)) + '*.*'#13#10 +
-			#13#10#13#10;
+			#13#10;
 
 		if deletedFolderList.Count > 0 then
 		begin
@@ -351,7 +363,7 @@ begin
 			scriptString := scriptString + #13#10;
 		end;
 
-		scriptString := scriptString + #13#10 +
+		scriptString := scriptString + 
 			'	Delete "mmarch.exe"'#13#10 +
 			#13#10 +
 			';-----FILE COPYING (MODIFYING, DELETING) ENDS HERE-----'#13#10 +
@@ -367,7 +379,7 @@ begin
 			'echo ' + ToDeleteExt + '>excludelist.txt'#13#10 +
 			'Xcopy files . /s /e /y /EXCLUDE:excludelist.txt'#13#10 +
 			'del excludelist.txt'#13#10 +
-			#13#10#13#10;
+			#13#10;
 
 		for elTemp in deletedFolderList do
 		begin
@@ -405,8 +417,8 @@ begin
 end;
 
 
-procedure compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder: string;
-			var deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList); overload;
+function compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder: string;
+			var deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList): boolean; overload;
 var
 	oldFolderList,
 	newFolderList,
@@ -616,7 +628,20 @@ begin
 					createEmptyFile(withTrailingSlash(copyToFolder) + elTemp + ToDeleteExt);
 		end;
 
-		colorPrintFileList(addedFileList, modifiedFileList, deletedFileList, addedFolderList, deletedFolderList);
+		if (addedFileList.Count = 0) and
+		(modifiedFileList.Count = 0) and
+		(deletedFileList.Count = 0) and
+		(addedFolderList.Count = 0) and
+		(deletedFolderList.Count = 0) then
+		begin
+			WriteLn(FoldersAreSame);
+			Result := true;
+		end
+		else
+		begin
+			colorPrintFileList(addedFileList, modifiedFileList, deletedFileList, addedFolderList, deletedFolderList);
+			Result := false;
+		end;
 
 		if deletedFolderList0 <> nil then // send results to deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList
 		begin
@@ -655,7 +680,8 @@ begin
 			MatchStr(AnsiLowerCase(ExtractFileExt(newArchiveOrFolder)), supportedExts)
 		then // oldArchiveOrFolder and newArchiveOrFolder are likely MM Archive files
 		begin
-			if not compareFile(oldArchiveOrFolder, newArchiveOrFolder) then
+			Result := compareFile(oldArchiveOrFolder, newArchiveOrFolder);
+			if not Result then
 			begin
 				addedFileList := TStringList.Create;
 				modifiedFileList := TStringList.Create;
@@ -692,6 +718,7 @@ begin
 						end;
 					end;
 
+					// whether `FilesAreSame` has already been checked
 					colorPrintFileList(addedFileList, modifiedFileList, deletedFileList);
 
 					if deletedFolderList0 <> nil then // send results to deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList
@@ -717,7 +744,7 @@ begin
 			end
 			else // compareFile(oldArchiveOrFolder, newArchiveOrFolder) = true
 			begin
-				raise Exception.Create(FilesAreSame);
+				WriteLn(FilesAreSame);
 			end;
 
 		end
@@ -731,7 +758,7 @@ begin
 end;
 
 
-procedure compareBase(oldArchiveOrFolder, newArchiveOrFolder: string; copyToFolder: string = ''); overload;
+function compareBase(oldArchiveOrFolder, newArchiveOrFolder: string; copyToFolder: string = ''): boolean; overload;
 var
 	deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList;
 
@@ -742,7 +769,7 @@ begin
 	deletedResFileList := nil;
 	modifiedArchiveList := nil;
 
-	compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder,
+	Result := compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder,
 				deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList);
 
 end;
@@ -758,7 +785,7 @@ begin
 
 	extListTemp := TStringList.Create;
 
-	oldDiffFileFolderLen := length(withTrailingSlash(beautifyPath(oldDiffFileFolder)));
+	oldDiffFileFolderLen := length(withTrailingSlash(oldDiffFileFolder));
 
 	// deletedFolderList: .todelete [folder]
 	extListTemp.Add(ToDeleteExt);

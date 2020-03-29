@@ -1,9 +1,11 @@
+cd %~dp0
+
 echo this is original test.txt>test_orig.txt
 echo this is new test.txt>test_new.txt
 echo this is new `test` file without extension>test
 echo this is test.str>test.str
 
-copy /Y ..\mmarch.exe
+copy /Y ..\..\mmarch.exe
 
 mkdir "L1-folder-你好-2\L2 folder\L3folder"
 
@@ -80,4 +82,4 @@ mmarch extract "**\//\/*.lod|vid" ../resource_folder
 
 
 del *.txt *.lod *.vid *.snd *.exe *.str test
-rmdir /s /q "L1 folder" "L1-folder-你好-2" my-h3lod-resource my-mmbitmapslod-resource my-mmbitmapslod-resource2 resource_folder "failsafe_test/thisfileisbroken_icons_lod" "../resource_folder"
+rmdir /s /q "L1 folder" "L1-folder-你好-2" my-h3lod-resource my-mmbitmapslod-resource my-mmbitmapslod-resource2 resource_folder "failsafe_test/hasincorrectresource.icons.lod.mmarchive" "../resource_folder"

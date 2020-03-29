@@ -319,7 +319,7 @@ You might need to wait a few minutes if you are trying to extract all the archiv
 mmarch extract **/* resource_folder
 ```
 
-The command above can extract all the resource files in all the supported archive files in current directory and its subdirectories. The resources will be placed in an auto-named (e.g. `icons_lod/` for `icons.lod`) subdirectory (or sub-subdirectory depending on whether the archive is in a subdirectory) in `resource_folder/`.
+The command above can extract all the resource files in all the supported archive files in current directory and its subdirectories. The resources will be placed in an auto-named (e.g. `icons.lod.mmarchive` for `icons.lod`) subdirectory (or sub-subdirectory depending on whether the archive is in a subdirectory) in `resource_folder/`.
 
 ```
 mmarch extract data/*.lod . *.txt
@@ -487,7 +487,7 @@ How to compile the source of **mmarch**:
 ## Change Log
 * [2020-03-11] v1.0: initial release
 * [2020-03-18] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
-* [2020-03-29] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer
+* [2020-03-30] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer
 
 ## License
 

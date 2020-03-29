@@ -7,6 +7,7 @@
 *.lnk
 *.zip
 !fixedsprites.zip
+!/test/general/failsafe_test/*.lod
 
 
 # Uncomment these types if you want even more clean repository. But be careful.

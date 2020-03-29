@@ -39,6 +39,7 @@ resourcestring
 	NeedArchiveFile              = 'You must specify an archive file';
 	UnknownMethod                = 'Unknown method: %s';
 	UnknownCompareOption         = 'Unknown compare option: %s';
+	OldDiffFolderEmpty           = 'OLD_DIFF_FOLDER is empty';
 
 	HELPSTR_FirstLine       = 'mmarch Version %s Usage:';
 	HELPSTR_ReqOpt          = '(`%s`: required; `%s`: optional; `%s`: or):';
@@ -388,24 +389,35 @@ begin
 	if (oldDiffFileFolder = '') or (scriptFilePath = '') or (diffFileFolderName = '') then
 		raise MissingParamException.Create(InsufficientParameters);
 
-	scriptFilePath := beautifyPath(scriptFilePath);
-	scriptFileFolder := ExtractFilePath(scriptFilePath);
+	oldDiffFileFolder := beautifyPath(oldDiffFileFolder);
+	if not DirectoryExists(oldDiffFileFolder) or (
+		(getAllFilesInFolder(oldDiffFileFolder, '*', false).Count = 0) and
+		(getAllFilesInFolder(oldDiffFileFolder, '*', true).Count = 0)
+	) then
+		WriteLn(OldDiffFolderEmpty)
+	else
+	begin
 
-	deletedFolderList     := TStringList.Create;
-	deletedNonResFileList := TStringList.Create;
-	deletedResFileList    := TStringList.Create;
-	modifiedArchiveList   := TStringList.Create;
+		scriptFilePath := beautifyPath(scriptFilePath);
+		scriptFileFolder := ExtractFilePath(scriptFilePath);
 
-	getListFromDiffFiles(oldDiffFileFolder, deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList);
+		deletedFolderList     := TStringList.Create;
+		deletedNonResFileList := TStringList.Create;
+		deletedResFileList    := TStringList.Create;
+		modifiedArchiveList   := TStringList.Create;
+			
+		getListFromDiffFiles(oldDiffFileFolder, deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList);
 
-	generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, scriptFilePath, diffFileFolderName, isNsis);
+		generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, scriptFilePath, diffFileFolderName, isNsis);
 
-	moveDir(oldDiffFileFolder, withTrailingSlash(scriptFileFolder) + beautifyPath(diffFileFolderName));
+		moveDir(oldDiffFileFolder, withTrailingSlash(scriptFileFolder) + beautifyPath(diffFileFolderName));
 
-	deletedFolderList.Free;
-	deletedNonResFileList.Free;
-	deletedResFileList.Free;
-	modifiedArchiveList.Free;
+		deletedFolderList.Free;
+		deletedNonResFileList.Free;
+		deletedResFileList.Free;
+		modifiedArchiveList.Free;
+
+	end;
 
 end;
 
@@ -425,6 +437,7 @@ end;
 procedure compareAny(oldArchiveOrFolder, newArchiveOrFolder, scriptFilePath, diffFileFolderName: string; isNsis: boolean);
 var
 	deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList;
+	same: boolean;
 begin
 
 	deletedFolderList     := TStringList.Create;
@@ -432,9 +445,12 @@ begin
 	deletedResFileList    := TStringList.Create;
 	modifiedArchiveList   := TStringList.Create;
 
-	compareBase(oldArchiveOrFolder, newArchiveOrFolder, withTrailingSlash(ExtractFilePath(scriptFilePath)) + diffFileFolderName,
+	same := compareBase(oldArchiveOrFolder, newArchiveOrFolder, withTrailingSlash(ExtractFilePath(scriptFilePath)) + diffFileFolderName,
 				deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList);
-	generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, scriptFilePath, diffFileFolderName, isNsis);
+	if not same then
+	begin
+		generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, scriptFilePath, diffFileFolderName, isNsis);
+	end;
 
 	deletedFolderList.Free;
 	deletedNonResFileList.Free;
