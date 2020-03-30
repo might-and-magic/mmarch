@@ -2,16 +2,14 @@ cd %~dp0
 
 copy /Y ..\..\mmarch.exe
 
-mmarch k "compare test from" "./\compare test to"
+mmarch k "compare test v1" "./\compare test v2"
 
-mmarch compare "compare test from" "./\compare test to" filesonly "diff folder"
+mmarch compare "compare test v1" "./\compare test v2" filesonly "diff folder"
 mmarch cf2n "diff folder" "nsis folder2/script.nsi" files
-
-mmarch compare "compare test from" "./\compare test to" filesonly "diff folder"
 mmarch cf2b "diff folder" "batch folder2/script.bat" files
 
-mmarch compare ".///\/compare test from" "./\///\compare test to" nsis "nsis folder/\//script.nsi" files
-mmarch k ".///\/compare test from" "./\///\compare test to" batch "batch folder/\//script.bat" files
+mmarch compare ".///\/compare test v1" "./\///\compare test v2" nsis "nsis folder/\//script.nsi" files
+mmarch k ".///\/compare test v1" "./\///\compare test v2" batch "batch folder/\//script.bat" files
 
 mmarch compare "nsis folder" "nsis folder2"
 mmarch compare "nsis folder" "nsis folder2" nsis "nsis folder3/\//script.nsi" files
@@ -24,68 +22,68 @@ mmarch k "batch folder" "batch folder2" batch "batch folder3/\//script.bat" file
 rmdir /s /q "nsis folder2" "batch folder2"
 
 
-xcopy /s /y /e /v /i "compare test from" "compare test from to test nsis"
+xcopy /s /y /e /v /i "compare test v1" "compare test v1 to check nsis"
 copy /Y mmarch.exe "nsis folder/mmarch.exe"
 "C:\Program Files (x86)\NSIS\makensis" "nsis folder/script.nsi"
-move "nsis folder\patch.exe" "compare test from to test nsis"
-"compare test from to test nsis/patch.exe"
-del "compare test from to test nsis\patch.exe"
-mmarch compare "compare test from to test nsis" "compare test to"
+move "nsis folder\patch.exe" "compare test v1 to check nsis"
+"compare test v1 to check nsis/patch.exe"
+del "compare test v1 to check nsis\patch.exe"
+mmarch compare "compare test v1 to check nsis" "compare test v2"
 
 
-xcopy /s /y /e /v /i "compare test from" "compare test from to test batch"
+xcopy /s /y /e /v /i "compare test v1" "compare test v1 to check batch"
 copy /Y mmarch.exe "batch folder/mmarch.exe"
-move "batch folder\*" "compare test from to test batch"
-move "batch folder\files" "compare test from to test batch"
-"compare test from to test batch/script.bat"
+move "batch folder\*" "compare test v1 to check batch"
+move "batch folder\files" "compare test v1 to check batch"
+"compare test v1 to check batch/script.bat"
 cd ..
-del "compare test from to test batch\script.bat" "compare test from to test batch\mmarch.exe"
-rmdir /s /q "compare test from to test batch\files"
-mmarch k "compare test from to test batch" "compare test to"
+del "compare test v1 to check batch\script.bat" "compare test v1 to check batch\mmarch.exe"
+rmdir /s /q "compare test v1 to check batch\files"
+mmarch k "compare test v1 to check batch" "compare test v2"
 
 
-rmdir /s /q "nsis folder" "batch folder" "compare test from to test nsis" "compare test from to test batch"
+rmdir /s /q "nsis folder" "batch folder" "compare test v1 to check nsis" "compare test v1 to check batch"
 
 
 
 
-mmarch k ".\//\\\compare test from\folder w modified files\icons.lod" "compare test to\folder w modified files\//icons.lod"
+mmarch k ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod"
 
-mmarch compare ".\//\\\compare test from\folder w modified files\icons.lod" "compare test to\folder w modified files\//icons.lod" filesonly "diff folder"
+mmarch compare ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod" filesonly "diff folder"
 mmarch compare-files-to-nsis "diff folder" "nsis folder2/script.nsi" files
 
-mmarch compare ".\//\\\compare test from\folder w modified files\icons.lod" "compare test to\folder w modified files\//icons.lod" filesonly "diff folder"
+mmarch compare ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod" filesonly "diff folder"
 mmarch compare-files-to-batch "diff folder" "batch folder2/script.bat" files
 
-mmarch compare ".\//\\\compare test from\folder w modified files\icons.lod" "compare test to\folder w modified files\//icons.lod" nsis "nsis folder/\//script.nsi" files
-mmarch k ".\//\\\compare test from\folder w modified files\icons.lod" "compare test to\folder w modified files\//icons.lod" batch "batch folder/\//script.bat" files
+mmarch compare ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod" nsis "nsis folder/\//script.nsi" files
+mmarch k ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod" batch "batch folder/\//script.bat" files
 
 mmarch compare "nsis folder" "nsis folder2"
 mmarch compare "batch folder" "batch folder2"
 
 rmdir /s /q "nsis folder2" "batch folder2"
 
-mkdir "compare test from to test nsis"
-xcopy /y "compare test from\folder w modified files\icons.lod" "compare test from to test nsis"
+mkdir "compare test v1 to check nsis"
+xcopy /y "compare test v1\folder w modified files\icons.lod" "compare test v1 to check nsis"
 copy /Y mmarch.exe "nsis folder/mmarch.exe"
 "C:\Program Files (x86)\NSIS\makensis" "nsis folder/script.nsi"
-move "nsis folder\patch.exe" "compare test from to test nsis"
-"compare test from to test nsis/patch.exe"
-del "compare test from to test nsis\patch.exe"
-mmarch compare "compare test from to test nsis\icons.lod" "compare test to\folder w modified files\icons.lod"
+move "nsis folder\patch.exe" "compare test v1 to check nsis"
+"compare test v1 to check nsis/patch.exe"
+del "compare test v1 to check nsis\patch.exe"
+mmarch compare "compare test v1 to check nsis\icons.lod" "compare test v2\folder w modified files\icons.lod"
 
 
-mkdir "compare test from to test batch"
-xcopy /y "compare test from\folder w modified files\icons.lod" "compare test from to test batch"
+mkdir "compare test v1 to check batch"
+xcopy /y "compare test v1\folder w modified files\icons.lod" "compare test v1 to check batch"
 copy /Y mmarch.exe "batch folder/mmarch.exe"
-move "batch folder\*" "compare test from to test batch"
-move "batch folder\files" "compare test from to test batch"
-"compare test from to test batch/script.bat"
+move "batch folder\*" "compare test v1 to check batch"
+move "batch folder\files" "compare test v1 to check batch"
+"compare test v1 to check batch/script.bat"
 cd ..
-del "compare test from to test batch\script.bat" "compare test from to test batch\mmarch.exe"
-rmdir /s /q "compare test from to test batch\files"
-mmarch compare "compare test from to test batch\icons.lod" "compare test to\folder w modified files\icons.lod"
+del "compare test v1 to check batch\script.bat" "compare test v1 to check batch\mmarch.exe"
+rmdir /s /q "compare test v1 to check batch\files"
+mmarch compare "compare test v1 to check batch\icons.lod" "compare test v2\folder w modified files\icons.lod"
 
 
-rmdir /s /q "nsis folder" "batch folder" "compare test from to test nsis" "compare test from to test batch"
+rmdir /s /q "nsis folder" "batch folder" "compare test v1 to check nsis" "compare test v1 to check batch"
 del mmarch.exe

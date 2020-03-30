@@ -226,7 +226,7 @@ mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> filesonly <DI
 
 Copy all diff files (i.e. non-resource file and extract in-archive resource files that are different, including added, modified or deleted. read [§ Details](#details-of-diff_folder-of-compare) if needed) in the two `ARCHIVE_FILE_OR_FOLDER`s, to `DIFF_FOLDER`.
 
-Note that if `DIFF_FOLDER` exsits, it will perform a merger of old diff and new diff by cleaning up old diff files. For instance, if a file is added, it will delete the same file with `.todelete` extension and all its parent folders with `.todelete` extension. This merger (cleanup) is only performed in `filesonly` command, and not in `nsis` or `batch`.
+Note that if `DIFF_FOLDER` exsits, it will perform a merger of old diff and new diff by cleaning up old diff files. Therefore, you can do: `mmarch compare VERSION_1 VERSION_2 filesonly diff_folder` and then `mmarch compare VERSION_2 VERSION_3 filesonly diff_folder`. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem. This merger (cleanup) is only performed in `filesonly` command, and not in `nsis` or `batch`.
 
 ### `compare-files-to-nsis`/`-batch`
 
@@ -247,7 +247,7 @@ The former command generates a .nsi script file, while the later command generat
 mmarch compare game_folder_old game_folder_new nsis nsis_folder/script.nsi files
 ```
 
-will have the same effect as
+(if diff_folder_temp/ is empty) will have the same effect as
 
 ```
 mmarch compare game_folder_old game_folder_new filesonly diff_folder_temp
