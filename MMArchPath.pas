@@ -34,6 +34,7 @@ procedure copyFile0(oldFile, newFile: string);
 function createEmptyFile(filePath: string): boolean;
 procedure StrToFile(filePath, SourceString: string);
 function moveDir(folderFrom, folderTo: string): Boolean;
+procedure delDir(folder: string);
 
 const
 	nameValSeparator: char = ':';
@@ -417,10 +418,8 @@ end;
 function moveDir(folderFrom, folderTo: string): Boolean;
 // folderFrom, folderTo cannot be current folder or ancestor folder
 var
-	currentDir: string;
 	fos: TSHFileOpStruct;
 begin
-	currentDir := GetCurrentDir;
 	folderFrom := trimCharsRight(beautifyPath(folderFrom), '\', '/');
 	folderTo := trimCharsRight(beautifyPath(folderTo), '\', '/');
 
@@ -432,8 +431,8 @@ begin
 		begin
 			wFunc  := FO_MOVE;
 			fFlags := FOF_FILESONLY;
-			pFrom  := PChar(withTrailingSlash(currentDir) + folderFrom + #0);
-			pTo    := PChar(withTrailingSlash(currentDir) + folderTo);
+			pFrom  := PChar(folderFrom + #0);
+			pTo    := PChar(folderTo);
 		end;
 		Result := (0 = ShFileOperation(fos));
 	end
@@ -442,6 +441,18 @@ begin
 		Result := false;
 	end;
 
+end;
+
+
+procedure delDir(folder: string);
+var
+	FileOp: TSHFileOpStruct;
+begin
+	FillChar(FileOp, SizeOf(FileOp), 0);
+	FileOp.wFunc := FO_DELETE;
+	FileOp.pFrom := PChar(folder + #0); // double zero-terminated
+	FileOp.fFlags := FOF_SILENT or FOF_NOERRORUI or FOF_NOCONFIRMATION;
+	SHFileOperation(FileOp);
 end;
 
 

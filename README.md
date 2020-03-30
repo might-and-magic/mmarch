@@ -208,7 +208,7 @@ mmarch compare events.lod events2.lod
 mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> nsis <SCRIPT_FILE> <DIFF_FOLDER_NAME>
 ```
 
-Generate a .nsi script file `SCRIPT_FILE` which can be compiled to a .exe patch installation file using [NSIS](https://nsis.sourceforge.io/). Diff files (same as with `fileonly` option) will be copied to a subfolder of `SCRIPT_FILE`'s folder, and the subfolder will be named with `DIFF_FOLDER_NAME` (it's a name, not a path). Read [§ NSIS-compiled patch installer](#nsis-compiled-patch-installer) for the following steps.
+Generate a .nsi script file `SCRIPT_FILE` which can be compiled to a .exe patch installation file using [NSIS](https://nsis.sourceforge.io/). Diff files (same as with `filesonly` option) will be copied to a subfolder of `SCRIPT_FILE`'s folder, and the subfolder will be named with `DIFF_FOLDER_NAME` (it's a name, not a path). Read [§ NSIS-compiled patch installer](#nsis-compiled-patch-installer) for the following steps.
 
 ### `batch`
 
@@ -216,15 +216,17 @@ Generate a .nsi script file `SCRIPT_FILE` which can be compiled to a .exe patch 
 mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> batch <SCRIPT_FILE> <DIFF_FOLDER_NAME>
 ```
 
-Generate a .bat (Window Batch) file `SCRIPT_FILE` which can work along with your DIFF_FOLDER and mmarch.exe. Diff files (same as with `fileonly` option) will be copied to a subfolder of `SCRIPT_FILE`'s folder, and the subfolder will be named with `DIFF_FOLDER_NAME` (it's a name, not a path). Read [§ Batch patch installer](#batch-patch-installer) for the following steps.
+Generate a .bat (Window Batch) file `SCRIPT_FILE` which can work along with your DIFF_FOLDER and mmarch.exe. Diff files (same as with `filesonly` option) will be copied to a subfolder of `SCRIPT_FILE`'s folder, and the subfolder will be named with `DIFF_FOLDER_NAME` (it's a name, not a path). Read [§ Batch patch installer](#batch-patch-installer) for the following steps.
 
-### `fileonly`
+### `filesonly`
 
 ```
-mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> fileonly <DIFF_FOLDER>
+mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> filesonly <DIFF_FOLDER>
 ```
 
 Copy all diff files (i.e. non-resource file and extract in-archive resource files that are different, including added, modified or deleted. read [§ Details](#details-of-diff_folder-of-compare) if needed) in the two `ARCHIVE_FILE_OR_FOLDER`s, to `DIFF_FOLDER`.
+
+Note that if `DIFF_FOLDER` exsits, it will perform a merger of old diff and new diff by cleaning up old diff files. For instance, if a file is added, it will delete the same file with `.todelete` extension and all its parent folders with `.todelete` extension. This merger (cleanup) is only performed in `filesonly` command, and not in `nsis` or `batch`.
 
 ### `compare-files-to-nsis`/`-batch`
 
@@ -238,7 +240,7 @@ mmarch compare-files-to-batch <OLD_DIFF_FOLDER> <SCRIPT_FILE> <DIFF_FOLDER_NAME>
 
 (`cf2n` is short for `compare-files-to-nsis`; `cf2b` is short for `compare-files-to-batch`)
 
-The former command generates a .nsi script file, while the later command generates a .bat (Window Batch) file `SCRIPT_FILE`, according to the files in `[OLD_DIFF_FOLDER]` that you get using `fileonly` option of `mmarch compare`. `[OLD_DIFF_FOLDER]` will then be moved to `SCRIPT_FILE`'s folder (becoming its subfolder) and renamed with `DIFF_FOLDER_NAME`.
+The former command generates a .nsi script file, while the later command generates a .bat (Window Batch) file `SCRIPT_FILE`, according to the files in `[OLD_DIFF_FOLDER]` that you get using `filesonly` option of `mmarch compare`. `[OLD_DIFF_FOLDER]` will then be moved to `SCRIPT_FILE`'s folder (becoming its subfolder) and renamed with `DIFF_FOLDER_NAME`.
 
 **`compare` mixed examples:**
 ```
@@ -248,7 +250,7 @@ mmarch compare game_folder_old game_folder_new nsis nsis_folder/script.nsi files
 will have the same effect as
 
 ```
-mmarch compare game_folder_old game_folder_new fileonly diff_folder_temp
+mmarch compare game_folder_old game_folder_new filesonly diff_folder_temp
 mmarch compare-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
 ```
 
@@ -407,7 +409,7 @@ Official Might and Magic VI and VII has some sprites with incorrect palette:
 
 ### Details of `DIFF_FOLDER` of `compare`
 
-* `DIFF_FOLDER` of `mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> {fileonly|nsis|batch}`:
+* `DIFF_FOLDER` of `mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> {filesonly|nsis|batch}`:
   * if a file is not present in old ARCHIVE_FILE_OR_FOLDER and is added in the new ARCHIVE_FILE_OR_FOLDER, then it will be copied to `DIFF_FOLDER`
   * if a file is present in old ARCHIVE_FILE_OR_FOLDER and is deleted in the new ARCHIVE_FILE_OR_FOLDER, then an **empty file named `FILENAME.todelete`** will be put into `DIFF_FOLDER`
   * if a non-MM Archive file is present in old ARCHIVE_FILE_OR_FOLDER and is modified in the new ARCHIVE_FILE_OR_FOLDER, then it will be copied to `DIFF_FOLDER`

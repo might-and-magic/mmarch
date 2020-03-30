@@ -98,7 +98,7 @@ begin
 	WriteLn('mmarch merge <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_ARCHIVE_FILE_2 + '>');
 	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '>');
 	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> {nsis|batch} <' + HELPPRM_SCRIPT_FOLDER + '> <' + HELPPRM_DIFF_FOLDER_NAME + '>');
-	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> fileonly <' + HELPPRM_DIFF_FOLDER + '>');
+	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> filesonly <' + HELPPRM_DIFF_FOLDER + '>');
 	WriteLn('mmarch compare-files-to-{nsis|batch} <' + HELPPRM_OLD_DIFF_FOLDER + '> <' + HELPPRM_SCRIPT_FOLDER + '> <' + HELPPRM_DIFF_FOLDER_NAME + '>');
 	WriteLn('mmarch optimize <' + HELPPRM_ARCHIVE_FILE + '>');
 	WriteLn('mmarch help');
@@ -170,7 +170,7 @@ begin
 			if Pos('*', archiveFile) > 0 then
 				extractToFolder := withTrailingSlash(extractToBaseFolder)
 				+ withTrailingSlash(archiveFileFolder)
-				+ archiveFileList.Names[j] + '.' + 'mmarchive';
+				+ archiveFileList.Names[j] + MMArchiveExt;
 
 			if fileName = '' then // FILE_TO_EXTRACT_1 is empty, extract all
 				archSimp.extractAll(extractToFolder);
@@ -370,7 +370,7 @@ begin
 end;
 
 
-procedure compareFileonly(oldArchiveOrFolder, newArchiveOrFolder, diffFileFolderName: string);
+procedure compareFilesonly(oldArchiveOrFolder, newArchiveOrFolder, diffFileFolderName: string);
 begin
 	compareBase(oldArchiveOrFolder, newArchiveOrFolder, diffFileFolderName);
 end;
@@ -488,7 +488,7 @@ begin
 	optionNumber := AnsiIndexStr(option,
 	['nsis',
 	'batch',
-	'fileonly',
+	'filesonly',
 	'']);
 
 	p5 := ParamStr(5);
@@ -503,7 +503,7 @@ begin
 	Case optionNumber of
 		0: compareNsis(archiveFile, archiveFile2, p5, p6);
 		1: compareBatch(archiveFile, archiveFile2, p5, p6);
-		2: compareFileonly(archiveFile, archiveFile2, p5);
+		2: compareFilesonly(archiveFile, archiveFile2, p5);
 		3: compareReport(archiveFile, archiveFile2);
 	else // -1: not found in the array
 		raise MissingParamException.CreateFmt(UnknownCompareOption, [option]);

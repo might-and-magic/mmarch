@@ -417,6 +417,73 @@ begin
 end;
 
 
+procedure cleanUpAllParentFolders(copyToFolder, innermostFolderPath: string); // including current folder
+var
+	elTemp: string;
+begin
+
+	innermostFolderPath := beautifyPath(innermostFolderPath);
+	elTemp := trimCharsRight(innermostFolderPath, '\', '/');
+
+	while elTemp <> '' do
+	begin
+		if DirectoryExists(copyToFolder + elTemp + ToDeleteExt) then
+		begin
+			delDir(copyToFolder + elTemp + ToDeleteExt);
+		end;
+		elTemp := trimCharsRight(ExtractFilePath(elTemp), '\', '/');
+	end;
+
+end;
+
+
+procedure cleanUpOldFolder(copyToFolder, fileOrFolderPath: string; fileType: integer);
+// type:
+// 1: [+/m] folder
+// 2: [-]   folder
+// 3: [+/m] file
+// 4: [-]   file
+// 5: [+/m] resourcefile
+// 6: [-]   resourcefile
+var
+	strTemp: string;
+begin
+
+	copyToFolder := withTrailingSlash(copyToFolder);
+
+	Case fileType of
+		1: // folderPath
+			cleanUpAllParentFolders(copyToFolder, fileOrFolderPath);
+		2: // folderPath (without .todelete)
+			delDir(copyToFolder + fileOrFolderPath);
+		3: // filePath (or archiveFilePath without .mmarchive)
+		begin
+			DeleteFile(copyToFolder + fileOrFolderPath + ToDeleteExt);
+			cleanUpAllParentFolders(copyToFolder, fileOrFolderPath);
+		end;
+		4: // filePath (or archiveFilePath without .mmarchive)
+		begin
+			DeleteFile(copyToFolder + fileOrFolderPath);
+			if MatchStr(AnsiLowerCase(ExtractFileExt(fileOrFolderPath)), supportedExts) then
+				delDir(copyToFolder + fileOrFolderPath + MMArchiveExt);
+		end;
+		5: // resourceFilePath (archiveFilePath.mmarchive\resourceFileName)
+		begin
+			DeleteFile(copyToFolder + fileOrFolderPath + ToDeleteExt);
+
+			strTemp := trimCharsRight(ExtractFilePath(fileOrFolderPath), '\', '/'); // with '.mmarchive'
+			System.Delete(strTemp, length(strTemp) - 9, 10); // remove '.mmarchive'
+			DeleteFile(copyToFolder + strTemp + ToDeleteExt);
+
+			cleanUpAllParentFolders(copyToFolder, ExtractFilePath(strTemp));
+		end;
+		6: // resourceFilePath (archiveFilePath.mmarchive\resourceFileName without .todelete)
+			DeleteFile(copyToFolder + fileOrFolderPath);
+	end;
+
+end;
+
+
 function compareBase(oldArchiveOrFolder, newArchiveOrFolder, copyToFolder: string;
 			var deletedFolderList0, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList): boolean; overload;
 var
@@ -445,11 +512,15 @@ var
 	i, nTemp: integer;
 
 	archSimpNew: MMArchSimple;
+	
+	copyToFolderExists : boolean;
 
 begin
 
 	oldArchiveOrFolder := beautifyPath(oldArchiveOrFolder);
 	newArchiveOrFolder := beautifyPath(newArchiveOrFolder);
+
+	copyToFolderExists := DirectoryExists(copyToFolder);
 
 	if DirectoryExists(oldArchiveOrFolder) and DirectoryExists(newArchiveOrFolder) then // oldArchiveOrFolder and newArchiveOrFolder are folders
 	begin
@@ -510,6 +581,11 @@ begin
 				if copyToFolder <> '' then // if needs file copy
 				begin
 					createDirRecur(withTrailingSlash(copyToFolder) + elTemp);
+
+					if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+					begin
+						cleanUpOldFolder(copyToFolder, elTemp, 1); // [+/m] folder
+					end;
 				end;
 			end
 			else
@@ -523,6 +599,11 @@ begin
 			if copyToFolder <> '' then // if needs file copy
 			begin
 				createDirRecur(withTrailingSlash(copyToFolder) + elTemp + ToDeleteExt);
+
+				if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+				begin
+					cleanUpOldFolder(copyToFolder, elTemp, 2); // [-]   folder
+				end;
 			end;
 		end;
 
@@ -541,6 +622,11 @@ begin
 				if copyToFolder <> '' then // if needs file copy
 				begin
 					copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
+
+					if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+					begin
+						cleanUpOldFolder(copyToFolder, elTemp, 3); // [+/m] file
+					end;
 				end;
 			end
 			else
@@ -568,6 +654,11 @@ begin
 								if copyToFolder <> '' then // if needs file copy
 								begin
 									archSimpNew.extract(withTrailingSlash(copyToFolder) + elTemp + MMArchiveExt, elTemp2);
+
+									if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+									begin
+										cleanUpOldFolder(copyToFolder, withTrailingSlash(elTemp + MMArchiveExt) + elTemp2, 5); // [+/m] resourcefile
+									end;
 								end;
 							end;
 
@@ -578,6 +669,11 @@ begin
 								if copyToFolder <> '' then // if needs file copy
 								begin
 									archSimpNew.extract(withTrailingSlash(copyToFolder) + elTemp + MMArchiveExt, elTemp2);
+
+									if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+									begin
+										cleanUpOldFolder(copyToFolder, withTrailingSlash(elTemp + MMArchiveExt) + elTemp2, 5); // [+/m] resourcefile
+									end;
 								end;
 							end;
 
@@ -588,6 +684,11 @@ begin
 								if copyToFolder <> '' then // if needs file copy
 								begin
 									createEmptyFile(withTrailingSlash(withTrailingSlash(copyToFolder) + elTemp + MMArchiveExt) + elTemp2 + ToDeleteExt);
+
+									if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+									begin
+										cleanUpOldFolder(copyToFolder, withTrailingSlash(elTemp + MMArchiveExt) + elTemp2, 6); // [-]   resourcefile
+									end;
 								end;
 							end;
 
@@ -599,6 +700,11 @@ begin
 							if copyToFolder <> '' then // if needs file copy
 							begin
 								copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
+
+								if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+								begin
+									cleanUpOldFolder(copyToFolder, elTemp, 3); // [+/m] file
+								end;
 							end;
 						end;
 
@@ -613,6 +719,11 @@ begin
 						if copyToFolder <> '' then // if needs file copy
 						begin
 							copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
+
+							if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+							begin
+								cleanUpOldFolder(copyToFolder, elTemp, 3); // [+/m] file
+							end;
 						end;
 					end;
 
@@ -626,6 +737,11 @@ begin
 			if copyToFolder <> '' then // if needs file copy
 				if deletedFolderList.IndexOf(trimCharsRight(ExtractFilePath(elTemp), '\', '/')) = -1 then
 					createEmptyFile(withTrailingSlash(copyToFolder) + elTemp + ToDeleteExt);
+
+				if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+				begin
+					cleanUpOldFolder(copyToFolder, elTemp, 4); // [-]   file
+				end;
 		end;
 
 		if (addedFileList.Count = 0) and
@@ -699,6 +815,11 @@ begin
 						if copyToFolder <> '' then // if needs file copy
 						begin
 							archSimpNew.extract(withTrailingSlash(copyToFolder) + nameTemp + MMArchiveExt, elTemp);
+
+							if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+							begin
+								cleanUpOldFolder(copyToFolder, withTrailingSlash(nameTemp + MMArchiveExt) + elTemp, 5); // [+/m] resourcefile
+							end;
 						end;
 					end;
 
@@ -707,6 +828,11 @@ begin
 						if copyToFolder <> '' then // if needs file copy
 						begin
 							archSimpNew.extract(withTrailingSlash(copyToFolder) + nameTemp + MMArchiveExt, elTemp);
+
+							if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+							begin
+								cleanUpOldFolder(copyToFolder, withTrailingSlash(nameTemp + MMArchiveExt) + elTemp, 5); // [+/m] resourcefile
+							end;
 						end;
 					end;
 
@@ -715,6 +841,11 @@ begin
 						if copyToFolder <> '' then // if needs file copy
 						begin
 							createEmptyFile(withTrailingSlash(withTrailingSlash(copyToFolder) + nameTemp + MMArchiveExt) + elTemp + ToDeleteExt);
+
+							if copyToFolderExists and (deletedFolderList0 <> nil) then // (deletedFolderList0 <> nil) means it's `filesonly`
+							begin
+								cleanUpOldFolder(copyToFolder, withTrailingSlash(nameTemp + MMArchiveExt) + elTemp, 6); // [-]   resourcefile
+							end;
 						end;
 					end;
 
