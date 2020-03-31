@@ -54,8 +54,8 @@ type
 		procedure delete(fileToDelete: string);
 
 		procedure addAll(folder: string; ext: string = '*');
-		procedure add(bmpFileToAdd: string; paletteIndex: integer); overload;
-		procedure add(fileToAdd: string); overload;
+		procedure add(bmpFileToAdd: string; paletteIndex: integer; needOptimize: boolean = true); overload;
+		procedure add(fileToAdd: string; needOptimize: boolean = true); overload;
 
 		procedure new(archiveFile: string; archiveFileType: string; folder: string);
 
@@ -341,24 +341,26 @@ begin
 	for fileName in fileNames do
 	begin
 		try // the individual resource file will be skipped if it gets an exception
-			add(withTrailingSlash(folder) + fileName);
+			add(withTrailingSlash(folder) + fileName, false);
 		except
 			on E: Exception do
 				WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
 		end;
 	end;
 	fileNames.Free;
-end;
-
-
-procedure MMArchSimple.add(bmpFileToAdd: string; paletteIndex: integer);
-begin
-	arch.Add(bmpFileToAdd, paletteIndex);
 	optimize;
 end;
 
 
-procedure MMArchSimple.add(fileToAdd: string);
+procedure MMArchSimple.add(bmpFileToAdd: string; paletteIndex: integer; needOptimize: boolean = true);
+begin
+	arch.Add(bmpFileToAdd, paletteIndex);
+	if needOptimize then
+		optimize;
+end;
+
+
+procedure MMArchSimple.add(fileToAdd: string; needOptimize: boolean = true);
 var
 	tLod: TRSLod;
 	ver: TRSLodVersion;
@@ -376,7 +378,8 @@ begin
 	end
 	else
 		arch.Add(fileToAdd);
-		optimize;
+		if needOptimize then
+			optimize;
 end;
 
 
@@ -442,6 +445,7 @@ begin
 	fFiles2 := arch2.RawFiles;
 
 	fFiles2.MergeTo(fFiles);
+
 	optimize;
 end;
 

@@ -1,6 +1,6 @@
 # [mmarch](https://github.com/might-and-magic/mmarch)
 
-Command line tool to handle (extract, replace resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows.
+Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows.
 
 [Download mmarch v3.0](https://github.com/might-and-magic/mmarch/releases/download/v3.0/mmarch.zip)
 
@@ -489,7 +489,7 @@ How to compile the source of **mmarch**:
 ## Change Log
 * [2020-03-11] v1.0: initial release
 * [2020-03-18] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
-* [2020-03-30] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer
+* [2020-03-31] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer
 
 ## License
 

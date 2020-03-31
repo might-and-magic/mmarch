@@ -189,7 +189,8 @@ begin
 						except
 							on E: Exception do
 							begin
-								WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fileName), beautifyPath(archiveFileList.Names[j])]));
+								WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fileName),
+										beautifyPath(withTrailingSlash(archiveFileFolder) + archiveFileList.Names[j])]));
 								WriteLn(E.Message);
 							end;
 						end;
@@ -200,7 +201,8 @@ begin
 		except
 			on E: Exception do
 			begin
-				WriteLn(format(ArchiveFileErrorStr, [beautifyPath(archiveFileList.Names[j])]));
+				WriteLn(format(ArchiveFileErrorStr,
+						[beautifyPath(withTrailingSlash(archiveFileFolder) + archiveFileList.Names[j])]));
 				WriteLn(E.Message);
 			end;
 		end;

@@ -420,6 +420,18 @@ begin
 end;
 
 
+function hasToDeletedParentFolder(copyToFolder, fileOrFolderPath: string; deletedFolderList: TStringList): boolean;
+var
+	parentFolder: string;
+begin
+	parentFolder := fileOrFolderPath;
+	repeat
+		parentFolder := trimCharsRight(ExtractFilePath(parentFolder), '\', '/');
+		Result := (deletedFolderList.IndexOf(parentFolder) <> -1);
+	until (parentFolder = '') or Result;
+end;
+
+
 // procedure cleanUpAllParentFolders(copyToFolder, innermostFolderPath: string); // including current folder
 // var
 // 	elTemp: string;
@@ -591,9 +603,7 @@ begin
 					createDirRecur(withTrailingSlash(copyToFolder) + elTemp);
 
 					if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-					begin
 						cleanUpOldFolder(copyToFolder, elTemp, 1); // [+/m] folder
-					end;
 				end;
 			end
 			else
@@ -602,16 +612,16 @@ begin
 
 		for elTemp in oldFolderList do // add to deleted list
 		begin
-			deletedFolderList.Add(elTemp);
+			if not hasToDeletedParentFolder(copyToFolder, elTemp, deletedFolderList) then
+				deletedFolderList.Add(elTemp);
 
 			if copyToFolder <> '' then // if needs file copy
 			begin
-				createDirRecur(withTrailingSlash(copyToFolder) + elTemp + ToDeleteExt);
+				if not hasToDeletedParentFolder(copyToFolder, elTemp, deletedFolderList) then
+					createDirRecur(withTrailingSlash(copyToFolder) + elTemp + ToDeleteExt);
 
 				if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-				begin
 					cleanUpOldFolder(copyToFolder, elTemp, 2); // [-]   folder
-				end;
 			end;
 		end;
 
@@ -632,9 +642,7 @@ begin
 					copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
 
 					if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-					begin
 						cleanUpOldFolder(copyToFolder, elTemp, 3); // [+/m] file
-					end;
 				end;
 			end
 			else
@@ -664,9 +672,7 @@ begin
 									archSimpNew.extract(withTrailingSlash(copyToFolder) + elTemp + MMArchiveExt, elTemp2);
 
 									if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-									begin
 										cleanUpOldFolder(copyToFolder, withTrailingSlash(elTemp + MMArchiveExt) + elTemp2, 5); // [+/m] resourcefile
-									end;
 								end;
 							end;
 
@@ -679,9 +685,7 @@ begin
 									archSimpNew.extract(withTrailingSlash(copyToFolder) + elTemp + MMArchiveExt, elTemp2);
 
 									if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-									begin
 										cleanUpOldFolder(copyToFolder, withTrailingSlash(elTemp + MMArchiveExt) + elTemp2, 5); // [+/m] resourcefile
-									end;
 								end;
 							end;
 
@@ -694,9 +698,7 @@ begin
 									createEmptyFile(withTrailingSlash(withTrailingSlash(copyToFolder) + elTemp + MMArchiveExt) + elTemp2 + ToDeleteExt);
 
 									if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-									begin
 										cleanUpOldFolder(copyToFolder, withTrailingSlash(elTemp + MMArchiveExt) + elTemp2, 6); // [-]   resourcefile
-									end;
 								end;
 							end;
 
@@ -710,9 +712,7 @@ begin
 								copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
 
 								if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-								begin
 									cleanUpOldFolder(copyToFolder, elTemp, 3); // [+/m] file
-								end;
 							end;
 						end;
 
@@ -729,9 +729,7 @@ begin
 							copyFile0(withTrailingSlash(newArchiveOrFolder) + elTemp, withTrailingSlash(copyToFolder) + elTemp);
 
 							if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-							begin
 								cleanUpOldFolder(copyToFolder, elTemp, 3); // [+/m] file
-							end;
 						end;
 					end;
 
@@ -740,16 +738,15 @@ begin
 
 		for elTemp in oldFileList do // add to deleted list
 		begin
-			deletedFileList.Add(elTemp);
+			if not hasToDeletedParentFolder(copyToFolder, elTemp, deletedFolderList) then
+				deletedFileList.Add(elTemp);
 
 			if copyToFolder <> '' then // if needs file copy
-				if deletedFolderList.IndexOf(trimCharsRight(ExtractFilePath(elTemp), '\', '/')) = -1 then
+				if not hasToDeletedParentFolder(copyToFolder, elTemp, deletedFolderList) then
 					createEmptyFile(withTrailingSlash(copyToFolder) + elTemp + ToDeleteExt);
 
 				if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-				begin
 					cleanUpOldFolder(copyToFolder, elTemp, 4); // [-]   file
-				end;
 		end;
 
 		if (addedFileList.Count = 0) and
@@ -825,9 +822,7 @@ begin
 							archSimpNew.extract(withTrailingSlash(copyToFolder) + nameTemp + MMArchiveExt, elTemp);
 
 							if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-							begin
 								cleanUpOldFolder(copyToFolder, withTrailingSlash(nameTemp + MMArchiveExt) + elTemp, 5); // [+/m] resourcefile
-							end;
 						end;
 					end;
 
@@ -838,9 +833,7 @@ begin
 							archSimpNew.extract(withTrailingSlash(copyToFolder) + nameTemp + MMArchiveExt, elTemp);
 
 							if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-							begin
 								cleanUpOldFolder(copyToFolder, withTrailingSlash(nameTemp + MMArchiveExt) + elTemp, 5); // [+/m] resourcefile
-							end;
 						end;
 					end;
 
@@ -851,9 +844,7 @@ begin
 							createEmptyFile(withTrailingSlash(withTrailingSlash(copyToFolder) + nameTemp + MMArchiveExt) + elTemp + ToDeleteExt);
 
 							if copyToFolderExists and (deletedFolderList0 = nil) then // (deletedFolderList0 = nil) means it's `filesonly`
-							begin
 								cleanUpOldFolder(copyToFolder, withTrailingSlash(nameTemp + MMArchiveExt) + elTemp, 6); // [-]   resourcefile
-							end;
 						end;
 					end;
 

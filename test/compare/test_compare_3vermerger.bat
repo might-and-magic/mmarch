@@ -23,6 +23,7 @@ move "nsis folder\patch.exe" "compare test v1 to check 12-23"
 
 move "compare test v1 to check 12-23\patch.exe" "compare test v2 to check 12-23"
 "compare test v2 to check 12-23/patch.exe"
+
 del "compare test v2 to check 12-23\patch.exe"
 
 mmarch compare "compare test v1 to check 12-23" "compare test v3"
@@ -43,6 +44,7 @@ move "nsis folder\patch.exe" "compare test v1 to check 13-23"
 
 move "compare test v1 to check 13-23\patch.exe" "compare test v2 to check 13-23"
 "compare test v2 to check 13-23/patch.exe"
+
 del "compare test v2 to check 13-23\patch.exe"
 
 mmarch compare "compare test v1 to check 13-23" "compare test v3"
