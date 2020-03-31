@@ -1,6 +1,6 @@
-# Tutorial of mmarch: How to make an MMMerge Update Patch
+# Tutorial of mmarch: How to make a .exe MMMerge Update Patch
 
-This tutorial shows how to make an Update Patch for MMMerge (Might and Magic 878 Merge Mod) with **mmarch** and NSIS.
+This tutorial shows how to make a .exe Update Patch for MMMerge (Might and Magic 878 Merge Mod) with **mmarch** and NSIS.
 
 ## Two-version diff patch
 

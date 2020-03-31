@@ -17,7 +17,7 @@ mmarch {<a href="#extract"><strong>e</strong>xtract</a>|<a href="#list"><strong>
 * Usage Notes: | [`FOLDER`](#notes-on-folder) | [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) | [Batch archive extraction](#batch-archive-extraction) | [Palette](#add-file-with-palette) arguments | [Other notes](#other-tips-and-notes)
 * For developer: | [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files) | [Compilation](#compilation) | [Change Log](#change-log)
 
-[Real-world example and tutorial: How to make an MMMerge Update Patch](tutorial)
+[Real-world example and tutorial: How to make a .exe MMMerge Update Patch](tutorial)
 
 ## `extract`
 
