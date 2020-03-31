@@ -1,20 +1,21 @@
 # Tutorial of mmarch: How to make an MMMerge Update Patch
 
-In this tutorial, I will demonstrate how to make an Update Patch for MMMerge (Might and Magic 878 Merge Mod) with **mmarch** and NSIS.
+This tutorial shows how to make an Update Patch for MMMerge (Might and Magic 878 Merge Mod) with **mmarch** and NSIS.
 
 ## Two-version diff patch
 
 ### Step 1: Preparation
 
-You have downloaded and installed [the latest (Version 3) NSIS](https://nsis.sourceforge.io/Download).
+Download and install [the latest (Version 3) NSIS](https://nsis.sourceforge.io/Download).
 
 You have MMMerge Version 2019-09-22 and Version 2020-03-29 in `mmmerge-2019-09-22/` and `mmmerge-2020-03-29` folders respectively, you want to make a .exe patch setup file that can update the former version to the later version.
 
-You also have copied `mmarch.exe` to the folder.
+Copy `mmarch.exe` to the folder.
 
 ![](https://raw.githubusercontent.com/might-and-magic/mmarch/master/tutorial/img/1-1.png "")
 
 `Win + R` to open "Run", then type in `cmd` and tap `Enter` to open "Windows Command Prompt".
+
 ![](https://raw.githubusercontent.com/might-and-magic/mmarch/master/tutorial/img/1-2.png "")
 
 ![](https://raw.githubusercontent.com/might-and-magic/mmarch/master/tutorial/img/1-3.png "")
@@ -23,7 +24,7 @@ You also have copied `mmarch.exe` to the folder.
 
 ### Step 2: Script file and patch generation
 
-### Step 2.1.
+#### Step 2.1.
 
 Use command
 
@@ -33,7 +34,7 @@ mmarch compare mmmerge-2019-09-22 mmmerge-2020-03-29 nsis nsis_folder/script.nsi
 
 to generate diff and NSIS script files in `nsis_folder/`.
 
-### Step 2.2.
+#### Step 2.2.
 
 Use Windows File Explorer GUI, **OR** use command
 
@@ -43,7 +44,7 @@ copy mmarch.exe nsis_folder
 
 to copy `mmarch.exe` to `nsis_folder/` folder.
 
-### Step 2.3.
+#### Step 2.3.
 
 Use MakeNSISW GUI as the screenshot shows
 
@@ -67,13 +68,13 @@ Full command line screenshot:
 
 You have MMMerge Version 2019-09-22, 2019-10-08, 2020-03-17 and 2020-03-29 in their respective folders, you want to make a .exe patch setup file that can update any of the three old versions to the latest version.
 
-(Same as in [Step 1 of "Two-version diff patch"](#)) You have installed NSIS, copied `mmarch.exe` to the folder, opened "Windows Command Prompt" and now you are on your working directory.
+(Same as in [Step 1 of "Two-version diff patch"](#step-1-preparation)) You have installed NSIS, copied `mmarch.exe` to the folder, opened "Windows Command Prompt" and now you are on your working directory.
 
 ![](https://raw.githubusercontent.com/might-and-magic/mmarch/master/tutorial/img/2-1.png "")
 
 ### Step 2: Script file and patch generation
 
-### Step 2.1.
+#### Step 2.1.
 
 ```
 mmarch compare mmmerge-2019-09-22 mmmerge-2019-10-08 filesonly diff_folder_temp
@@ -88,7 +89,9 @@ These commands will:
 
 If `DIFF_FOLDER` contains previous diff files, `mmarch compare OLD NEW filesonly DIFF_FOLDER` will perform a merger of old diff files and new diff files by cleaning up old diff files. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem.
 
-### Step 2.2.
+![](https://raw.githubusercontent.com/might-and-magic/mmarch/master/tutorial/img/multi_version.png "")
+
+#### Step 2.2.
 
 Use command
 
@@ -98,13 +101,13 @@ mmarch compare-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
 
 to generate NSIS script `script.nsi` in `nsis_folder/` folder, from diff files in `diff_folder_temp/` folder.
 
-### Step 2.3.
+#### Step 2.3.
 
-(Same as in [Step 2.2 of "Two-version diff patch"](#)) Copy `mmarch.exe` to `nsis_folder/` folder.
+(Same as in [Step 2.2 of "Two-version diff patch"](#step-22)) Copy `mmarch.exe` to `nsis_folder/` folder.
 
-### Step 2.4.
+#### Step 2.4.
 
-(Same as in [Step 2.3 of "Two-version diff patch"](#)) Generate patch.exe from `nsis_folder/script.nsi` with NSIS
+(Same as in [Step 2.3 of "Two-version diff patch"](#step-23)) Generate patch.exe from `nsis_folder/script.nsi` with NSIS.
 
 Full command line screenshot:
 
@@ -116,4 +119,4 @@ Put `patch.exe` installation file into your game folder, then double click to ru
 
 You may also generate a Windows Batch file patch instead of an NSIS `.exe` installation file.
 
-Visit https://github.com/might-and-magic/mmarch for more information.
+Visit [**mmarch**'s Home Page (github.com/might-and-magic/mmarch)](..) for the full documentation.

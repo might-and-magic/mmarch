@@ -17,6 +17,8 @@ mmarch {<a href="#extract"><strong>e</strong>xtract</a>|<a href="#list"><strong>
 * Usage Notes: | [`FOLDER`](#notes-on-folder) | [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) | [Batch archive extraction](#batch-archive-extraction) | [Palette](#add-file-with-palette) arguments | [Other notes](#other-tips-and-notes)
 * For developer: | [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files) | [Compilation](#compilation) | [Change Log](#change-log)
 
+[Real-world example and tutorial: How to make an MMMerge Update Patch](tutorial)
+
 ## `extract`
 
 ```
@@ -228,7 +230,7 @@ mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> filesonly <DI
 
 Copy all diff files (i.e. non-resource file and extract in-archive resource files that are different, including added, modified or deleted. read [§ Details](#details-of-diff_folder-of-compare) if needed) in the two `ARCHIVE_FILE_OR_FOLDER`s, to `DIFF_FOLDER`.
 
-Note that if `DIFF_FOLDER` exsits, it will perform a merger of old diff files and new diff files by cleaning up old diff files. Therefore, you can do: `mmarch compare VERSION_1 VERSION_2 filesonly diff_folder` and then `mmarch compare VERSION_2 VERSION_3 filesonly diff_folder`. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem. This merger (cleanup) is only performed in `filesonly` command, and not in `nsis` or `batch`.
+Note that if `DIFF_FOLDER` exsits, it will perform a merger of old diff files and new diff files by cleaning up old diff files. Therefore, you can do: `mmarch compare VERSION_1 VERSION_2 filesonly diff_folder` and then `mmarch compare VERSION_2 VERSION_3 filesonly diff_folder`. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem ([image demo](tutorial/img/multi_version.png)). This merger (cleanup) is only performed in `filesonly` command, and not in `nsis` or `batch`.
 
 ### `compare-files-to-nsis`/`-batch`
 
@@ -491,7 +493,7 @@ How to compile the source of **mmarch**:
 ## Change Log
 * [2020-03-11] v1.0: initial release
 * [2020-03-18] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
-* [2020-03-31] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer
+* [2020-03-31] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer; tutorial
 
 ## License
 
