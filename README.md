@@ -194,7 +194,9 @@ The fourth parameter, `[OPTION]`, can be:
 mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2>
 ```
 
-Print a comparison report.
+Print a comparison report. Legend:
+
+![Comparison report legend](https://raw.githubusercontent.com/might-and-magic/mmarch/master/compare_legend.png "Comparison report legend")
 
 **Example:**
 
@@ -226,7 +228,7 @@ mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> filesonly <DI
 
 Copy all diff files (i.e. non-resource file and extract in-archive resource files that are different, including added, modified or deleted. read [§ Details](#details-of-diff_folder-of-compare) if needed) in the two `ARCHIVE_FILE_OR_FOLDER`s, to `DIFF_FOLDER`.
 
-Note that if `DIFF_FOLDER` exsits, it will perform a merger of old diff and new diff by cleaning up old diff files. Therefore, you can do: `mmarch compare VERSION_1 VERSION_2 filesonly diff_folder` and then `mmarch compare VERSION_2 VERSION_3 filesonly diff_folder`. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem. This merger (cleanup) is only performed in `filesonly` command, and not in `nsis` or `batch`.
+Note that if `DIFF_FOLDER` exsits, it will perform a merger of old diff files and new diff files by cleaning up old diff files. Therefore, you can do: `mmarch compare VERSION_1 VERSION_2 filesonly diff_folder` and then `mmarch compare VERSION_2 VERSION_3 filesonly diff_folder`. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem. This merger (cleanup) is only performed in `filesonly` command, and not in `nsis` or `batch`.
 
 ### `compare-files-to-nsis`/`-batch`
 
