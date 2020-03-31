@@ -56,7 +56,7 @@ Use MakeNSISW GUI as the screenshot shows
 "C:\Program Files (x86)\NSIS\makensis" nsis_folder/script.nsi
 ```
 
-to generate patch.exe from `nsis_folder/script.nsi`
+to compile `nsis_folder/script.nsi` to `patch.exe` with NSIS.
 
 Full command line screenshot:
 
@@ -107,7 +107,7 @@ to generate NSIS script `script.nsi` in `nsis_folder/` folder, from diff files i
 
 #### Step 2.4.
 
-(Same as in [Step 2.3 of "Two-version diff patch"](#step-23)) Generate patch.exe from `nsis_folder/script.nsi` with NSIS.
+(Same as in [Step 2.3 of "Two-version diff patch"](#step-23)) Compile `nsis_folder/script.nsi` to `patch.exe` with NSIS.
 
 Full command line screenshot:
 
@@ -115,8 +115,12 @@ Full command line screenshot:
 
 ## Patch Usage and More
 
-Put `patch.exe` installation file into your game folder, then double click to run it.
+Put `patch.exe` installation file into your game folder, then double click to run it. Your game will be patched automatically.
+
+![](https://raw.githubusercontent.com/might-and-magic/mmarch/master/tutorial/img/execute.png "")
+
+In order to make more complex installation file, you can modify the `.nsi` script file before compiling it to `.exe`.
 
 You may also generate a Windows Batch file patch instead of an NSIS `.exe` installation file.
 
-Visit [**mmarch**'s Home Page (github.com/might-and-magic/mmarch)](..) for the full documentation.
+Visit [**mmarch**'s Home Page](https://github.com/might-and-magic/mmarch) for the full documentation.
