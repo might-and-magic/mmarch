@@ -2,6 +2,8 @@
 
 This tutorial shows how to make a .exe Update Patch for MMMerge (Might and Magic 878 Merge Mod) with **mmarch** and NSIS.
 
+(You can go to [MMMerge Update Patch Project](https://github.com/might-and-magic/mmmerge-update-patch) to download the made patch)
+
 ## Two-version diff patch
 
 ### Step 1: Preparation
