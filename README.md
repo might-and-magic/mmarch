@@ -2,7 +2,7 @@
 
 Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows.
 
-[Download mmarch v3.1](https://github.com/might-and-magic/mmarch/releases/download/v3.1/mmarch.zip)
+[Download mmarch v3.1](https://github.com/might-and-magic/mmarch/releases/download/v3.1/mmarch.7z)
 
 Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([repo](https://github.com/GrayFace/Misc/)). If you need a graphical user interface tool, use MMArchive.
 

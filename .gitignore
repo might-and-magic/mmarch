@@ -6,6 +6,7 @@
 *.lod
 *.lnk
 *.zip
+*.7z
 !fixedsprites.zip
 !/test/general/failsafe_test/*.lod
 
