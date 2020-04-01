@@ -20,7 +20,7 @@ type
 	MissingParamException = class(Exception);
 
 const
-	MMARCHVERSION: string = '3.0';
+	MMARCHVERSION: string = '3.1';
 	MMARCHURL: string = 'https://github.com/might-and-magic/mmarch';
 
 var
@@ -39,7 +39,7 @@ resourcestring
 	NeedArchiveFile              = 'You must specify an archive file';
 	UnknownMethod                = 'Unknown method: %s';
 	UnknownCompareOption         = 'Unknown compare option: %s';
-	OldDiffFolderEmpty           = 'OLD_DIFF_FOLDER is empty';
+	OldDiffFolderEmpty           = 'Folder %s is empty';
 
 	HELPSTR_FirstLine       = 'mmarch Version %s Usage:';
 	HELPSTR_ReqOpt          = '(`%s`: required; `%s`: optional; `%s`: or):';
@@ -81,7 +81,7 @@ resourcestring
 	HELPPRM_DIFF_FOLDER              = 'DIFF_FOLDER';
 	HELPPRM_DIFF_FOLDER_NAME         = 'DIFF_FOLDER_NAME';
 	HELPPRM_OLD_DIFF_FOLDER          = 'OLD_DIFF_FOLDER';
-	HELPPRM_SCRIPT_FOLDER            = 'SCRIPT_FOLDER';
+	HELPPRM_SCRIPT_FILE              = 'SCRIPT_FILE';
 	HELPPRM_FILE_TO_XX_X             = 'FILE_TO_XX_?';
 
 
@@ -97,9 +97,10 @@ begin
 	WriteLn('mmarch create <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_ARCHIVE_FILE_TYPE + '> <' + HELPPRM_FOLDER + '> [' + HELPPRM_FILE_TO_ADD_1 + '] [' + HELPPRM_FILE_TO_ADD_2 + '] [...]');
 	WriteLn('mmarch merge <' + HELPPRM_ARCHIVE_FILE + '> <' + HELPPRM_ARCHIVE_FILE_2 + '>');
 	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '>');
-	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> {nsis|batch} <' + HELPPRM_SCRIPT_FOLDER + '> <' + HELPPRM_DIFF_FOLDER_NAME + '>');
+	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> {nsis|batch} <' + HELPPRM_SCRIPT_FILE + '> <' + HELPPRM_DIFF_FOLDER_NAME + '>');
 	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> filesonly <' + HELPPRM_DIFF_FOLDER + '>');
-	WriteLn('mmarch compare-files-to-{nsis|batch} <' + HELPPRM_OLD_DIFF_FOLDER + '> <' + HELPPRM_SCRIPT_FOLDER + '> <' + HELPPRM_DIFF_FOLDER_NAME + '>');
+	WriteLn('mmarch diff-files-to-{nsis|batch} <' + HELPPRM_OLD_DIFF_FOLDER + '> <' + HELPPRM_SCRIPT_FILE + '> <' + HELPPRM_DIFF_FOLDER_NAME + '>');
+	WriteLn('mmarch diff-add-keep <' + HELPPRM_DIFF_FOLDER + '>');
 	WriteLn('mmarch optimize <' + HELPPRM_ARCHIVE_FILE + '>');
 	WriteLn('mmarch help');
 
@@ -378,10 +379,11 @@ begin
 end;
 
 
-procedure compareFilesToAny(isNsis: boolean);
+procedure diffFilesToAny(isNsis: boolean);
 var
 	oldDiffFileFolder, scriptFilePath, diffFileFolderName, scriptFileFolder: string;
 	deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList;
+	moved: boolean;
 begin
 
 	oldDiffFileFolder := ParamStr(2);
@@ -396,7 +398,7 @@ begin
 		(getAllFilesInFolder(oldDiffFileFolder, '*', false).Count = 0) and
 		(getAllFilesInFolder(oldDiffFileFolder, '*', true).Count = 0)
 	) then
-		WriteLn(OldDiffFolderEmpty)
+		WriteLn(format(OldDiffFolderEmpty, [oldDiffFileFolder]))
 	else
 	begin
 
@@ -410,9 +412,9 @@ begin
 			
 		getListFromDiffFiles(oldDiffFileFolder, deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList);
 
-		generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, scriptFilePath, diffFileFolderName, isNsis);
-
-		moveDir(oldDiffFileFolder, withTrailingSlash(scriptFileFolder) + beautifyPath(diffFileFolderName));
+		moved := moveDir(oldDiffFileFolder, withTrailingSlash(scriptFileFolder) + beautifyPath(diffFileFolderName));
+		if moved then
+			generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, scriptFilePath, diffFileFolderName, isNsis);
 
 		deletedFolderList.Free;
 		deletedNonResFileList.Free;
@@ -424,15 +426,21 @@ begin
 end;
 
 
-procedure compareFilesToNsis;
+procedure diffFilesToNsis;
 begin
-	compareFilesToAny(true);
+	diffFilesToAny(true);
 end;
 
 
-procedure compareFilesToBatch;
+procedure diffFilesToBatch;
 begin
-	compareFilesToAny(false);
+	diffFilesToAny(false);
+end;
+
+
+procedure diffAddKeep;
+begin
+	addKeepToAllEmptyFoldersRecur(archiveFile); // archiveFile here is a folder path
 end;
 
 
@@ -450,9 +458,7 @@ begin
 	same := compareBase(oldArchiveOrFolder, newArchiveOrFolder, withTrailingSlash(ExtractFilePath(scriptFilePath)) + diffFileFolderName,
 				deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList);
 	if not same then
-	begin
 		generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, scriptFilePath, diffFileFolderName, isNsis);
-	end;
 
 	deletedFolderList.Free;
 	deletedNonResFileList.Free;
@@ -531,11 +537,12 @@ begin
 		methodNumber := AnsiIndexStr(method, ['extract', 'e', 'list', 'l',
 			'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm',
 			'compare', 'k', 'optimize', 'o',
-			'compare-files-to-nsis', 'cf2n', 'compare-files-to-batch', 'cf2b',
+			'diff-files-to-nsis', 'df2n', 'diff-files-to-batch', 'df2b', 'diff-add-keep', 'dak',
 			'help', 'h', '']);
 		archiveFile := ParamStr(2);
 
-		if (archiveFile = '') And (methodNumber < 22) And (methodNumber >= 0) then // < 18: method is not `help`, `compareFilesToNsis` or `compareFilesToBatch`
+		// < 24: method is not `help`
+		if (archiveFile = '') And (methodNumber < 24) And (methodNumber >= 0) then
 			raise MissingParamException.Create(NeedArchiveFile);
 
 		Case methodNumber of
@@ -548,9 +555,10 @@ begin
 			12, 13: merge;
 			14, 15: compare;
 			16, 17: optimize;
-			18, 19: compareFilesToNsis;
-			20, 21: compareFilesToBatch;
-			22, 23, 24: help;
+			18, 19: diffFilesToNsis;
+			20, 21: diffFilesToBatch;
+			22, 23: diffAddKeep;
+			24, 25, 26: help;
 		else // -1: not found in the array
 			raise MissingParamException.CreateFmt(UnknownMethod, [method]);
 		end;

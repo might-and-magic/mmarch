@@ -2,9 +2,9 @@
 
 Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows.
 
-[Download mmarch v3.0](https://github.com/might-and-magic/mmarch/releases/download/v3.0/mmarch.zip)
+[Download mmarch v3.1](https://github.com/might-and-magic/mmarch/releases/download/v3.1/mmarch.zip)
 
-Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([repo](https://github.com/GrayFace/Misc/)) (mmarch is actually kind of a wrapper of MMArchive). If you need a graphical user interface tool, use MMArchive.
+Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([repo](https://github.com/GrayFace/Misc/)). If you need a graphical user interface tool, use MMArchive.
 
 ## Summary & Table of Contents
 
@@ -186,6 +186,8 @@ mmarch merge events.lod events2.lod
 
 Compare two archive files, or two folders containing archive files and/or files of any other type.
 
+`mmarch compare` and all related commands and features (incl. NSIS/batch script generation) work totally even if your folders do not contain any MM archive files at all. Therefore, you can use **mmarch** as a general file comparison and diff generation tool.
+
 (`k` is short for `compare`)
 
 The fourth parameter, `[OPTION]`, can be:
@@ -232,19 +234,27 @@ Copy all diff files (i.e. non-resource file and extract in-archive resource file
 
 Note that if `DIFF_FOLDER` exsits, it will perform a merger of old diff files and new diff files by cleaning up old diff files. Therefore, you can do: `mmarch compare VERSION_1 VERSION_2 filesonly diff_folder` and then `mmarch compare VERSION_2 VERSION_3 filesonly diff_folder`. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem ([image demo](tutorial/img/multi_version.png)). This merger (cleanup) is only performed in `filesonly` command, and not in `nsis` or `batch`.
 
-### `compare-files-to-nsis`/`-batch`
+### `diff-files-to-nsis`/`-batch`, `diff-add-keep`
 
-There are also two special commands:
+There are also 3 special commands related to `compare`:
 
 ```
-mmarch compare-files-to-nsis <OLD_DIFF_FOLDER> <SCRIPT_FILE> <DIFF_FOLDER_NAME>
-or
-mmarch compare-files-to-batch <OLD_DIFF_FOLDER> <SCRIPT_FILE> <DIFF_FOLDER_NAME>
+mmarch diff-files-to-nsis <OLD_DIFF_FOLDER> <SCRIPT_FILE> <DIFF_FOLDER_NAME>
+OR
+mmarch diff-files-to-batch <OLD_DIFF_FOLDER> <SCRIPT_FILE> <DIFF_FOLDER_NAME>
 ```
 
-(`cf2n` is short for `compare-files-to-nsis`; `cf2b` is short for `compare-files-to-batch`)
+(`df2n` is short for `diff-files-to-nsis`; `df2b` is short for `diff-files-to-batch`)
 
 The former command generates a .nsi script file, while the later command generates a .bat (Window Batch) file `SCRIPT_FILE`, according to the files in `[OLD_DIFF_FOLDER]` that you get using `filesonly` option of `mmarch compare`. `[OLD_DIFF_FOLDER]` will then be moved to `SCRIPT_FILE`'s folder (becoming its subfolder) and renamed with `DIFF_FOLDER_NAME`.
+
+```
+mmarch diff-add-keep <DIFF_FOLDER>
+```
+
+(`dak` is short for `diff-add-keep`)
+
+This is for developers using Git. It will add an empty file `.mmarchkeep` to every empty folder in `DIFF_FOLDER`, so that Git can keep the empty folders tracked. `diff-files-to-nsis`/`-batch` ignore `.mmarchkeep` files.
 
 **`compare` mixed examples:**
 ```
@@ -255,7 +265,7 @@ mmarch compare game_folder_old game_folder_new nsis nsis_folder/script.nsi files
 
 ```
 mmarch compare game_folder_old game_folder_new filesonly diff_folder_temp
-mmarch compare-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
+mmarch diff-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
 ```
 
 ## `optimize`
@@ -455,31 +465,6 @@ A user may:
 
 The batch file will not perform a self-deletion, users have to delete .bat, mmarch.exe and `DIFF_FOLDER` manually.
 
-### Other Batch scripts
-
-Simple demostration of some non-straightforward, advanced usages of batch file:
-
-Save the resource list (one file name per line) in an archive as a txt file:
-
-```
-mmarch list events.lod> events_temp_list.txt
-```
-
-Save the resource list in an archive as a txt file, with `|` as leading, trailing character and separators. Then search to see if `D17.STR` file exists in the archive:
-
-```
-@echo|set /p="|"> events_temp_list.txt
-mmarch list events.loD "|">> events_temp_list.txt
-@echo|set /p="|">> events_temp_list.txt
-
-findstr "|D17.STR|" events_temp_list.txt
-IF %errorlevel% == 0 (
-	echo Found!
-) ELSE (
-	echo Not found!
-)
-```
-
 ## Compilation
 
 How to compile the source of **mmarch**:
@@ -494,6 +479,7 @@ How to compile the source of **mmarch**:
 * [2020-03-11] v1.0: initial release
 * [2020-03-18] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
 * [2020-03-31] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer; tutorial
+* [2020-04-02] v3.1: diff-files-to-* instead of compare-files-to-*; diff-add-keep; fix problem moving to subfolder
 
 ## License
 

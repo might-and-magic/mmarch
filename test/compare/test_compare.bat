@@ -8,9 +8,9 @@ mmarch compare ".///\/compare test v1" "./\///\compare test v2" nsis "nsis folde
 mmarch k ".///\/compare test v1" "./\///\compare test v2" batch "batch folder/\//script.bat" files
 
 mmarch compare "compare test v1" "./\compare test v2" filesonly "diff folder"
-mmarch cf2n "diff folder" "nsis folder2/script.nsi" files
+mmarch df2n "diff folder" "nsis folder2/script.nsi" files
 mmarch compare "compare test v1" "./\compare test v2" filesonly "diff folder"
-mmarch cf2b "diff folder" "batch folder2/script.bat" files
+mmarch df2b "diff folder" "batch folder2/script.bat" files
 
 mmarch compare "nsis folder" "nsis folder2"
 mmarch compare "nsis folder" "nsis folder2" nsis "nsis folder3/\//script.nsi" files
@@ -56,9 +56,9 @@ mmarch compare ".///\/compare test v2" "./\///\compare test v3" nsis "nsis folde
 mmarch k ".///\/compare test v2" "./\///\compare test v3" batch "batch folder/\//script.bat" files
 
 mmarch compare "compare test v2" "./\compare test v3" filesonly "diff folder"
-mmarch cf2n "diff folder" "nsis folder2/script.nsi" files
+mmarch df2n "diff folder" "nsis folder2/script.nsi" files
 mmarch compare "compare test v2" "./\compare test v3" filesonly "diff folder"
-mmarch cf2b "diff folder" "batch folder2/script.bat" files
+mmarch df2b "diff folder" "batch folder2/script.bat" files
 
 mmarch compare "nsis folder" "nsis folder2"
 mmarch compare "nsis folder" "nsis folder2" nsis "nsis folder3/\//script.nsi" files
@@ -101,10 +101,10 @@ rmdir /s /q "nsis folder" "batch folder" "compare test v2 to check nsis" "compar
 mmarch k ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod"
 
 mmarch compare ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod" filesonly "diff folder"
-mmarch compare-files-to-nsis "diff folder" "nsis folder2/script.nsi" files
+mmarch diff-files-to-nsis "diff folder" "nsis folder2/script.nsi" files
 
 mmarch compare ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod" filesonly "diff folder"
-mmarch compare-files-to-batch "diff folder" "batch folder2/script.bat" files
+mmarch diff-files-to-batch "diff folder" "batch folder2/script.bat" files
 
 mmarch compare ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod" nsis "nsis folder/\//script.nsi" files
 mmarch k ".\//\\\compare test v1\folder w modified files\icons.lod" "compare test v2\folder w modified files\//icons.lod" batch "batch folder/\//script.bat" files

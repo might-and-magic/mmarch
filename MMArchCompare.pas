@@ -261,6 +261,7 @@ procedure generateScript(deletedFolderList, deletedNonResFileList, deletedResFil
 var
 	scriptString, elTemp, strTemp: string;
 	tslTemp: TStringList;
+	noRes: boolean;
 
 begin
 
@@ -268,6 +269,8 @@ begin
 	deletedNonResFileList.Sort;
 	deletedResFileList.Sort;
 	modifiedArchiveList.Sort;
+
+	noRes := (deletedResFileList.Count = 0) and (modifiedArchiveList.Count = 0);
 
 	if isNsis then // NSIS
 	begin
@@ -314,9 +317,12 @@ begin
 			#13#10 +
 			';-----FILE COPYING (MODIFYING, DELETING) STARTS HERE-----'#13#10 +
 			#13#10 +
-			'	SetOutPath $INSTDIR'#13#10 +
-			'	File mmarch.exe'#13#10 +
-			#13#10;
+			'	SetOutPath $INSTDIR'#13#10;
+
+		if not noRes then
+			scriptString := scriptString + '	File mmarch.exe'#13#10;
+
+		scriptString := scriptString + #13#10;
 
 		if deletedFolderList.Count > 0 then
 		begin
@@ -327,7 +333,7 @@ begin
 			scriptString := scriptString + #13#10;
 		end;
 			
-		scriptString := scriptString +'	File /r /x *' + ToDeleteExt + ' ' + withTrailingSlash(beautifyPath(diffFileFolderName)) + '*.*'#13#10 +
+		scriptString := scriptString +'	File /r /x *' + ToDeleteExt + ' /x *' + EmptyFolderKeep + ' ' + withTrailingSlash(beautifyPath(diffFileFolderName)) + '*.*'#13#10 +
 			#13#10;
 
 		if deletedNonResFileList.Count > 0 then
@@ -364,8 +370,10 @@ begin
 			scriptString := scriptString + #13#10;
 		end;
 
+		if not noRes then
+			scriptString := scriptString + '	Delete "mmarch.exe"'#13#10;
+
 		scriptString := scriptString + 
-			'	Delete "mmarch.exe"'#13#10 +
 			#13#10 +
 			';-----FILE COPYING (MODIFYING, DELETING) ENDS HERE-----'#13#10 +
 			#13#10 +
@@ -385,7 +393,7 @@ begin
 		scriptString := scriptString + #13#10;
 
 		scriptString := scriptString +
-			'echo ' + ToDeleteExt + '>excludelist.txt'#13#10 +
+			'(echo ' + ToDeleteExt + ' && echo ' + EmptyFolderKeep + ')>excludelist.txt'#13#10 +
 			'Xcopy files . /s /e /y /EXCLUDE:excludelist.txt'#13#10 +
 			'del excludelist.txt'#13#10 +
 			#13#10;

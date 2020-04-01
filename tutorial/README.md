@@ -8,7 +8,7 @@ This tutorial shows how to make a .exe Update Patch for MMMerge (Might and Magic
 
 Download and install [the latest (Version 3) NSIS](https://nsis.sourceforge.io/Download).
 
-You have MMMerge Version 2019-09-22 and Version 2020-03-29 in `mmmerge-2019-09-22/` and `mmmerge-2020-03-29` folders respectively, you want to make a .exe patch setup file that can update the former version to the later version.
+You have MMMerge Version 2019-09-22 and Version 2020-03-29 in `mmmerge-2019-09-22/` and `mmmerge-2020-03-29/` folders respectively, you want to make a .exe patch setup file that can update the former version to the later version.
 
 Copy `mmarch.exe` to the folder.
 
@@ -84,10 +84,10 @@ mmarch compare mmmerge-2020-03-17 mmmerge-2020-03-29 filesonly diff_folder_temp
 
 These commands will:
 * generate diff files "from mmmerge-2019-09-22 to mmmerge-2019-10-08" in the folder `diff_folder_temp/`
-* generate diff files "from mmmerge-2019-10-08 to mmmerge-2020-03-17" in the same folder
-* generate diff files "from mmmerge-2020-03-17 to mmmerge-2020-03-29" in the same folder
+* generate diff files "from mmmerge-2019-10-08 to mmmerge-2020-03-17" again in `diff_folder_temp/`
+* generate diff files "from mmmerge-2020-03-17 to mmmerge-2020-03-29" again in `diff_folder_temp/`
 
-If `DIFF_FOLDER` contains previous diff files, `mmarch compare OLD NEW filesonly DIFF_FOLDER` will perform a merger of old diff files and new diff files by cleaning up old diff files. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem.
+If `DIFF_FOLDER` contains previous diff files (such as `diff_folder_temp/` above), `mmarch compare OLD NEW filesonly DIFF_FOLDER` will perform a merger of old diff files and new diff files by cleaning up old diff files. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem.
 
 ![](https://raw.githubusercontent.com/might-and-magic/mmarch/master/tutorial/img/multi_version.png "")
 
@@ -96,7 +96,7 @@ If `DIFF_FOLDER` contains previous diff files, `mmarch compare OLD NEW filesonly
 Use command
 
 ```
-mmarch compare-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
+mmarch diff-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
 ```
 
 to generate NSIS script `script.nsi` in `nsis_folder/` folder, from diff files in `diff_folder_temp/` folder.
@@ -122,5 +122,9 @@ Put `patch.exe` installation file into your game folder, then double click to ru
 In order to make more complex installation file, you can modify the `.nsi` script file before compiling it to `.exe`.
 
 You may also generate a Windows Batch file patch instead of an NSIS `.exe` installation file.
+
+Developers using Git may need [`diff-add-keep`](https://github.com/might-and-magic/mmarch#diff-files-to-nsis-batch-diff-add-keep) command.
+
+`mmarch compare` and all related commands and features (incl. NSIS/batch script generation) work totally even if your folders do not contain any MM archive files at all. Therefore, you can use **mmarch** as a general file comparison and diff generation tool.
 
 Visit [**mmarch**'s Home Page](https://github.com/might-and-magic/mmarch) for the full documentation.

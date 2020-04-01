@@ -25,6 +25,7 @@ function getAllFilesInFolder(path: string; ext: string = '*'; isDir: boolean = f
 
 procedure addAllFilesToFileList(var fileList: TStringList; path: string; recursive: integer; isDir: boolean; usePathFilenamePair: boolean; extList: TStringList); overload;
 procedure addAllFilesToFileList(var fileList: TStringList; path: string; recursive: integer; isDir: boolean; usePathFilenamePair: boolean); overload;
+procedure addKeepToAllEmptyFoldersRecur(folder: string);
 
 function beautifyPath(oldStr: String): string;
 function withTrailingSlash(path: string): string;
@@ -33,12 +34,15 @@ procedure createDirRecur(dir: string);
 procedure copyFile0(oldFile, newFile: string);
 function createEmptyFile(filePath: string): boolean;
 procedure StrToFile(filePath, SourceString: string);
+function isSubfolder(folder, potentialSubfolder: string): boolean;
 function moveDir(folderFrom, folderTo: string): Boolean;
 procedure delDir(folder: string);
 
 const
 	nameValSeparator: char = ':';
 	archResSeparator: char = ':';
+
+	EmptyFolderKeep: string = '.mmarchkeep';
 
 	supportedExts: array[0..7] of string = ('.lod', '.pac', '.snd', '.vid', '.lwd', '.mm7', '.dod', '.mm6');
 
@@ -219,18 +223,24 @@ begin
 	if findfirst(fileMask, attr, searchResult) = 0 then
 	begin
 		repeat
-			if ( (
-				(not isDir) and
-				FileExists(searchResult.Name)
-			) or (
-				isDir and
-				( (searchResult.attr and faDirectory) = faDirectory ) and
-				(searchResult.Name <> '.') and
-				(searchResult.Name <> '..')
-			) ) and (
+			if (
+				(
+					(not isDir) and
+					FileExists(searchResult.Name)
+				) or (
+					isDir and
+					( (searchResult.attr and faDirectory) = faDirectory ) and
+					(searchResult.Name <> '.') and
+					(searchResult.Name <> '..')
+				)
+			)
+			and
+			(
 				(fileMask <> '*.') or
 				( (fileMask = '*.') and (ExtractFileExt(searchResult.Name) = '') )
 			)
+			and
+			(searchResult.Name <> EmptyFolderKeep) // special: ignore all .mmarchkeep file
 			then
 				Result.Add(searchResult.Name);
 		until FindNext(searchResult) <> 0;
@@ -247,10 +257,10 @@ var
 begin
 	for ext in extList do
 		for fileName in getAllFilesInFolder(path, ext, isDir) do
-		if usePathFilenamePair then
-			fileList.Add(fileName + nameValSeparator + beautifyPath(path))
-		else
-			fileList.Add(withTrailingSlash(beautifyPath(path)) + fileName);
+			if usePathFilenamePair then
+				fileList.Add(fileName + nameValSeparator + beautifyPath(path))
+			else
+				fileList.Add(withTrailingSlash(beautifyPath(path)) + fileName);
 end;
 
 
@@ -261,7 +271,10 @@ var
 begin
 	extList := TStringList.Create;
 	extList.Add('*');
+
 	addAllFilesToFileListNonRecur(fileList, path, isDir, usePathFilenamePair, extList);
+	
+	extList.Free;
 end;
 
 
@@ -307,6 +320,29 @@ begin
 	extList.Add('*');
 
 	addAllFilesToFileList(fileList, path, recursive, isDir, usePathFilenamePair, extList);
+
+	extList.Free;
+end;
+
+
+procedure addKeepToAllEmptyFoldersRecur(folder: string);
+var
+	allFolders: TStringList;
+	elTemp: string;
+
+begin
+	folder := trimCharsRight(beautifyPath(folder), '\', '/');
+
+	allFolders := TStringList.Create;
+	allFolders.Add(folder);
+	addAllFilesToFileList(allFolders, folder, 1, true, false);
+
+	for elTemp in allFolders do
+		if (getAllFilesInFolder(elTemp, '*', true).Count = 0)
+		and (getAllFilesInFolder(elTemp, '*', false).Count = 0) then // folder is empty (but maybe contain .mmarchkeep)
+			createEmptyFile(withTrailingSlash(elTemp) + EmptyFolderKeep);
+
+	allFolders.Free;
 end;
 
 
@@ -415,6 +451,20 @@ begin
 end;
 
 
+function isSubfolder(folder, potentialSubfolder: string): boolean;
+var
+	parentFolder, lastParentFolder: string;
+begin
+	parentFolder := trimCharsRight(beautifyPath(potentialSubfolder), '\', '/');
+	folder := trimCharsRight(beautifyPath(folder), '\', '/');
+	repeat
+		lastParentFolder := parentFolder;
+		parentFolder := trimCharsRight(ExtractFilePath(parentFolder), '\', '/');
+		Result := (parentFolder = folder);
+	until (parentFolder = lastParentFolder) or (parentFolder = '') or Result;
+end;
+
+
 function moveDir(folderFrom, folderTo: string): Boolean;
 // folderFrom, folderTo cannot be current folder or ancestor folder
 var
@@ -423,24 +473,29 @@ begin
 	folderFrom := trimCharsRight(beautifyPath(folderFrom), '\', '/');
 	folderTo := trimCharsRight(beautifyPath(folderTo), '\', '/');
 
-	if folderFrom <> folderTo then
+	if isSubfolder(folderFrom, folderTo) then
 	begin
-		createDirRecur(ExtractFilePath(folderTo));
-		ZeroMemory(@fos, SizeOf(fos));
-		with fos do
-		begin
-			wFunc  := FO_MOVE;
-			fFlags := FOF_FILESONLY;
-			pFrom  := PChar(folderFrom + #0);
-			pTo    := PChar(folderTo);
-		end;
-		Result := (0 = ShFileOperation(fos));
+		Result := moveDir(folderFrom, folderFrom + '.mmarchtmp');
+		Result := Result and moveDir(folderFrom + '.mmarchtmp', folderTo);
 	end
 	else
-	begin
-		Result := false;
-	end;
-
+		if folderFrom <> folderTo then
+		begin
+			createDirRecur(ExtractFilePath(folderTo));
+			ZeroMemory(@fos, SizeOf(fos));
+			with fos do
+			begin
+				wFunc  := FO_MOVE;
+				fFlags := FOF_FILESONLY;
+				pFrom  := PChar(folderFrom + #0);
+				pTo    := PChar(folderTo);
+			end;
+			Result := (0 = ShFileOperation(fos));
+		end
+		else
+		begin
+			Result := false;
+		end;
 end;
 
 
