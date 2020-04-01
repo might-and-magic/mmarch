@@ -28,9 +28,9 @@ Copy `mmarch.exe` to the folder.
 
 Use command
 
-```
-mmarch compare mmmerge-2019-09-22 mmmerge-2020-03-29 nsis nsis_folder/script.nsi files
-```
+<pre>
+mmarch <a href="https://github.com/might-and-magic/mmarch#compare">compare</a> mmmerge-2019-09-22 mmmerge-2020-03-29 nsis nsis_folder/script.nsi files
+</pre>
 
 to generate diff and NSIS script files in `nsis_folder/`.
 
@@ -76,11 +76,11 @@ You have MMMerge Version 2019-09-22, 2019-10-08, 2020-03-17 and 2020-03-29 in th
 
 #### Step 2.1.
 
-```
-mmarch compare mmmerge-2019-09-22 mmmerge-2019-10-08 filesonly diff_folder_temp
+<pre>
+mmarch compare mmmerge-2019-09-22 mmmerge-2019-10-08 <a href="https://github.com/might-and-magic/mmarch#filesonly">filesonly</a> diff_folder_temp
 mmarch compare mmmerge-2019-10-08 mmmerge-2020-03-17 filesonly diff_folder_temp
 mmarch compare mmmerge-2020-03-17 mmmerge-2020-03-29 filesonly diff_folder_temp
-```
+</pre>
 
 These commands will:
 * generate diff files "from mmmerge-2019-09-22 to mmmerge-2019-10-08" in the folder `diff_folder_temp/`
@@ -95,9 +95,9 @@ If `DIFF_FOLDER` contains previous diff files (such as `diff_folder_temp/` above
 
 Use command
 
-```
-mmarch diff-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
-```
+<pre>
+mmarch <a href="https://github.com/might-and-magic/mmarch#diff-files-to-nsis-batch-diff-add-keep">diff-files-to-nsis</a> diff_folder_temp nsis_folder/script.nsi files
+</pre>
 
 to generate NSIS script `script.nsi` in `nsis_folder/` folder, from diff files in `diff_folder_temp/` folder.
 
