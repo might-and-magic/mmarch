@@ -9,10 +9,25 @@ Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([repo
 ## Summary & Table of Contents
 
 <pre>
-mmarch {<a href="#extract"><strong>e</strong>xtract</a>|<a href="#list"><strong>l</strong>ist</a>|<a href="#add"><strong>a</strong>dd</a>|<a href="#delete"><strong>d</strong>elete</a>|<a href="#rename"><strong>r</strong>ename</a>|<a href="#create"><strong>c</strong>reate</a>|<a href="#merge"><strong>m</strong>erge</a>|<a href="#compare">(<strong>k</strong>|compare)</a>|<a href="#optimize"><strong>o</strong>ptimize</a>|<a href="#help"><strong>h</strong>elp</a>} &lt;ARCHIVE_FILE&gt; [OTHER_ARGUMENTS]
+mmarch <a href="#extract"><strong>e</strong>xtract</a> &lt;ARCHIVE_FILE&gt; &lt;FOLDER&gt; [FILE_TO_EXTRACT_1] [FILE_TO_EXTRACT_2] [...]
+mmarch <a href="#list"><strong>l</strong>ist</a> &lt;ARCHIVE_FILE&gt; [SEPARATOR]
+mmarch <a href="#add"><strong>a</strong>dd</a> &lt;ARCHIVE_FILE&gt; &lt;FILE_TO_ADD_1&gt; [FILE_TO_ADD_2] [...]
+mmarch <a href="#delete"><strong>d</strong>elete</a> &lt;ARCHIVE_FILE&gt; &lt;FILE_TO_DELETE_1&gt; [FILE_TO_DELETE_2] [...]
+mmarch <a href="#rename"><strong>r</strong>ename</a> &lt;ARCHIVE_FILE&gt; &lt;OLD_FILE_NAME&gt; &lt;NEW_FILE_NAME&gt;
+mmarch <a href="#create"><strong>c</strong>reate</a> &lt;ARCHIVE_FILE&gt; &lt;ARCHIVE_FILE_TYPE&gt; &lt;FOLDER&gt; [FILE_TO_ADD_1] [FILE_TO_ADD_2] [...]
+mmarch <a href="#merge"><strong>m</strong>erge</a> &lt;ARCHIVE_FILE&gt; &lt;ARCHIVE_FILE_2&gt;
+mmarch <a href="#compare">compare</a> &lt;ARCHIVE_FILE_OR_FOLDER&gt; &lt;ARCHIVE_FILE_OR_FOLDER_2&gt;
+mmarch compare &lt;ARCHIVE_FILE_OR_FOLDER&gt; &lt;ARCHIVE_FILE_OR_FOLDER_2&gt; <a href="#nsis">{nsis|batch}</a> &lt;SCRIPT_FILE&gt; &lt;DIFF_FOLDER_NAME&gt;
+mmarch compare &lt;ARCHIVE_FILE_OR_FOLDER&gt; &lt;ARCHIVE_FILE_OR_FOLDER_2&gt; <a href="#filesonly">filesonly</a> &lt;DIFF_FOLDER&gt;
+mmarch <a href="#diff-files-to-nsis-batch">diff-files-to-{nsis|batch}</a> &lt;OLD_DIFF_FOLDER&gt; &lt;SCRIPT_FILE&gt; &lt;DIFF_FOLDER_NAME&gt;
+mmarch <a href="#diff-add-keep"><strong>d</strong>iff-<strong>a</strong>dd-<strong>k</strong>eep</a> &lt;DIFF_FOLDER&gt;
+mmarch <a href="#optimize"><strong>o</strong>ptimize</a> &lt;ARCHIVE_FILE&gt;
+mmarch <a href="#help"><strong>h</strong>elp</a>
 </pre>
 
 `<>`: required; `[]`: optional; `{a|b|c}`: required, choose one of them
+
+For the first argument, use <code><strong>k</strong></code> for <code>compare</code>, <code><strong>df2n</strong></code> for <code>diff-files-to-nsis</code>, <code><strong>df2b</strong></code> for <code>diff-files-to-batch</code>, <code><strong>dak</strong></code> for <code>diff-add-keep</code>, otherwise, use the initial letter as a shortcut.
 
 * Usage Notes: | [`FOLDER`](#notes-on-folder) | [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) | [Batch archive extraction](#batch-archive-extraction) | [Palette](#add-file-with-palette) arguments | [Other notes](#other-tips-and-notes)
 * For developer: | [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files) | [Compilation](#compilation) | [Change Log](#change-log)
@@ -41,17 +56,8 @@ Read "[§ Notes on `FOLDER`](#notes-on-folder)" section for more important notes
 
 ```
 mmarch extract events.lod .
-```
-
-```
 mmarch extract events.lod myfolder
-```
-
-```
 mmarch extract events.lod "my folder/my subfolder"
-```
-
-```
 mmarch extract events.lod myfolder items.txt OUT04.EVT
 ```
 
@@ -71,9 +77,6 @@ List all file names in the archive file.
 
 ```
 mmarch list events.lod
-```
-
-```
 mmarch list events.lod "|"
 ```
 
@@ -205,7 +208,8 @@ Print a comparison report. Legend:
 **Example:**
 
 ```
-mmarch compare events.lod events2.lod
+mmarch compare events.lod new.events.lod
+mmarch compare game_folder_old game_folder_new
 ```
 
 ### `nsis`
@@ -215,6 +219,12 @@ mmarch compare <ARCHIVE_FILE_OR_FOLDER> <ARCHIVE_FILE_OR_FOLDER_2> nsis <SCRIPT_
 ```
 
 Generate a .nsi script file `SCRIPT_FILE` which can be compiled to a .exe patch installation file using [NSIS](https://nsis.sourceforge.io/). Diff files (same as with `filesonly` option) will be copied to a subfolder of `SCRIPT_FILE`'s folder, and the subfolder will be named with `DIFF_FOLDER_NAME` (it's a name, not a path). Read [§ NSIS-compiled patch installer](#nsis-compiled-patch-installer) for the following steps.
+
+**Example:**
+
+```
+mmarch compare game_folder_old game_folder_new nsis nsis_folder/script.nsi files
+```
 
 ### `batch`
 
@@ -234,9 +244,11 @@ Copy all diff files (i.e. non-resource file and extract in-archive resource file
 
 Note that if `DIFF_FOLDER` exsits, it will perform a merger of old diff files and new diff files by cleaning up old diff files. Therefore, you can do: `mmarch compare VERSION_1 VERSION_2 filesonly diff_folder` and then `mmarch compare VERSION_2 VERSION_3 filesonly diff_folder`. It's OK to do VER1 -> VER2 then VER2 -> VER3, or VER1 -> VER3 then VER2 -> VER3. But VER1 -> VER2 then VER1 -> VER3 will cause problem ([image demo](tutorial/img/multi_version.png)). This merger (cleanup) is only performed in `filesonly` command, and not in `nsis` or `batch`.
 
-### `diff-files-to-nsis`/`-batch`, `diff-add-keep`
+## `diff-*`
 
-There are also 3 special commands related to `compare`:
+There are also 3 special arguments related to `compare`, all predeced by `diff-*`:
+
+### `diff-files-to-nsis`/`-batch`
 
 ```
 mmarch diff-files-to-nsis <OLD_DIFF_FOLDER> <SCRIPT_FILE> <DIFF_FOLDER_NAME>
@@ -248,6 +260,23 @@ mmarch diff-files-to-batch <OLD_DIFF_FOLDER> <SCRIPT_FILE> <DIFF_FOLDER_NAME>
 
 The former command generates a .nsi script file, while the later command generates a .bat (Window Batch) file `SCRIPT_FILE`, according to the files in `[OLD_DIFF_FOLDER]` that you get using `filesonly` option of `mmarch compare`. `[OLD_DIFF_FOLDER]` will then be moved to `SCRIPT_FILE`'s folder (becoming its subfolder) and renamed with `DIFF_FOLDER_NAME`.
 
+**Examples:**
+
+If `diff_folder_temp/` is empty, the aforementioned
+
+```
+mmarch compare game_folder_old game_folder_new nsis nsis_folder/script.nsi files
+```
+
+has the same effect as the two following commands combined
+
+```
+mmarch compare game_folder_old game_folder_new filesonly diff_folder_temp
+mmarch diff-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
+```
+
+### `diff-add-keep`
+
 ```
 mmarch diff-add-keep <DIFF_FOLDER>
 ```
@@ -255,18 +284,6 @@ mmarch diff-add-keep <DIFF_FOLDER>
 (`dak` is short for `diff-add-keep`)
 
 This is for developers using Git. It will add an empty file `.mmarchkeep` to every empty folder in `DIFF_FOLDER`, so that Git can keep the empty folders tracked. `diff-files-to-nsis`/`-batch` ignore `.mmarchkeep` files.
-
-**`compare` mixed examples:**
-```
-mmarch compare game_folder_old game_folder_new nsis nsis_folder/script.nsi files
-```
-
-(if diff_folder_temp/ is empty) will have the same effect as
-
-```
-mmarch compare game_folder_old game_folder_new filesonly diff_folder_temp
-mmarch diff-files-to-nsis diff_folder_temp nsis_folder/script.nsi files
-```
 
 ## `optimize`
 
@@ -369,9 +386,6 @@ Do not pad 0 to palette index. `pal023.act`'s palette index is 23.
 
 ```
 mmarch add sprites.lod mymonster01.bmp /p 23 mymonster02.bmp /p 558
-```
-
-```
 mmarch create myfiles.sprites.lod mmspriteslod . mymonster01.bmp /p 23 mymonster02.bmp /p 558
 ```
 
@@ -381,7 +395,7 @@ Less important tips and notes include:
 
 ### Use initial letter for the first argument
 
-For the first argument, the initial letter of <code><strong>e</strong>xtract</code>, <code><strong>l</strong>ist</code>, <code><strong>a</strong>dd</code>, <code><strong>d</strong>elete</code>, <code><strong>r</strong>ename</code>, <code><strong>c</strong>reate</code>, <code><strong>m</strong>erge</code>, <code><strong>o</strong>ptimize</code>, <code><strong>h</strong>elp</code> can be used instead of them; use <code><strong>k</strong></code> for <code>compare</code>; they can be optionally preceded by a leading `-` or `--` which will do the same job.
+For the first argument, the initial letter of <code><strong>e</strong>xtract</code>, <code><strong>l</strong>ist</code>, <code><strong>a</strong>dd</code>, <code><strong>d</strong>elete</code>, <code><strong>r</strong>ename</code>, <code><strong>c</strong>reate</code>, <code><strong>m</strong>erge</code>, <code><strong>o</strong>ptimize</code>, <code><strong>h</strong>elp</code> can be used instead (e.g. <code>mmarch <strong>e</strong> events.lod myfolder</code>); use <code><strong>k</strong></code> for <code>compare</code>, <code><strong>df2n</strong></code> for <code>diff-files-to-nsis</code>, <code><strong>df2b</strong></code> for <code>diff-files-to-batch</code>, <code><strong>dak</strong></code> for <code>diff-add-keep</code>; they can be optionally preceded by a leading `-` or `--` which will do the same job.
 
 ### Paths are case-insensitive
 
