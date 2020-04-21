@@ -68,14 +68,14 @@ type
 
 
 resourcestring
-	         FileNotFound = 'File %s is not found in the archive';
+	         FileNotFound = 'File `%s` is not found in the archive';
 	        FileNameEmpty = 'File name is empty';
 	   SEPaletteMustExist = 'Image must be in 256 colors mode and palette must be added to bitmaps.lod';
 	    SEPaletteNotFound = 'Failed to find matching palette in [*.]bitmaps.lod';
 	             ErrorStr = 'Error: %s';
-	         FileErrorStr = 'File %s error: %s';
-	FileInArchiveErrorStr = 'File %s in archive %s error:';
-	  ArchiveFileErrorStr = 'Archive file %s (or perhaps not an MM Archive file) error:';
+	         FileErrorStr = 'File `%s` error: %s';
+	FileInArchiveErrorStr = 'File `%s` in archive `%s` error:';
+	  ArchiveFileErrorStr = 'Archive file `%s` (or perhaps not an MM Archive file) error:';
 
 
 implementation

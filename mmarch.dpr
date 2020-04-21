@@ -20,7 +20,7 @@ type
 	MissingParamException = class(Exception);
 
 const
-	MMARCHVERSION: string = '3.1';
+	MMARCHVERSION: string = '3.2';
 	MMARCHURL: string = 'https://github.com/might-and-magic/mmarch';
 
 var
@@ -37,9 +37,9 @@ resourcestring
 	NeedArchiveFilesToMerge      = 'You must specify two archive files to be merged together';
 	InsufficientParameters       = 'Insufficient parameters';
 	NeedArchiveFile              = 'You must specify an archive file';
-	UnknownMethod                = 'Unknown method: %s';
-	UnknownCompareOption         = 'Unknown compare option: %s';
-	OldDiffFolderEmpty           = 'Folder %s is empty';
+	UnknownMethod                = 'Unknown method: `%s`';
+	UnknownCompareOption         = 'Unknown compare option: `%s`';
+	OldDiffFolderEmpty           = 'Folder `%s` is empty';
 
 	HELPSTR_FirstLine       = 'mmarch Version %s Usage:';
 	HELPSTR_ReqOpt          = '(`%s`: required; `%s`: optional; `%s`: or):';
@@ -381,9 +381,9 @@ end;
 
 procedure diffFilesToAny(isNsis: boolean);
 var
-	oldDiffFileFolder, scriptFilePath, diffFileFolderName, scriptFileFolder: string;
+	oldDiffFileFolder, scriptFilePath, diffFileFolderName, scriptFileFolder, newDiffFileFolder: string;
 	deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList: TStringList;
-	moved: boolean;
+	shouldGenerateScript: boolean;
 begin
 
 	oldDiffFileFolder := ParamStr(2);
@@ -412,8 +412,11 @@ begin
 			
 		getListFromDiffFiles(oldDiffFileFolder, deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList);
 
-		moved := moveDir(oldDiffFileFolder, withTrailingSlash(scriptFileFolder) + beautifyPath(diffFileFolderName));
-		if moved then
+		newDiffFileFolder := withTrailingSlash(scriptFileFolder) + beautifyPath(diffFileFolderName);
+		shouldGenerateScript := true;
+		if not SameText(oldDiffFileFolder, newDiffFileFolder) then
+			shouldGenerateScript := moveDir(oldDiffFileFolder, newDiffFileFolder);
+		if shouldGenerateScript then
 			generateScript(deletedFolderList, deletedNonResFileList, deletedResFileList, modifiedArchiveList, scriptFilePath, diffFileFolderName, isNsis);
 
 		deletedFolderList.Free;
