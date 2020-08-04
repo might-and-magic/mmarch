@@ -485,7 +485,7 @@ How to compile the source of **mmarch**:
 
 * `git clone` or download **mmarch**'s source
 * `git clone` or download [GrayFace/Misc](https://github.com/GrayFace/Misc)
-* Copy or move RSPak/ folder from GrayFace/Misc project into mmarch/ source folder
+* Copy or move RSPak/ folder from GrayFace/Misc project into mmarch's source folder
 * Open "mmarch.bdsproj" file with Borland Developer Studio 2006 or Delphi 10 (it may or may not work with newer version Borland, see [GrayFace's note](https://github.com/GrayFace/Misc))
 * Compile
 
