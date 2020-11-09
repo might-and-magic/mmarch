@@ -498,4 +498,4 @@ How to compile the source of **mmarch**:
 
 ## License
 
-[MIT](https://github.com/might-and-magic/mmarch/blob/master/LICENSE.md)
+[MIT](https://github.com/might-and-magic/mmarch/blob/master/LICENSE)
