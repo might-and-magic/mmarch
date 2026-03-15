@@ -51,7 +51,7 @@ type
 		procedure extract(folder: string; fileToExtract: string);
 
 		procedure deleteAll(ext: string = '*');
-		procedure delete(fileToDelete: string);
+		procedure delete(fileToDelete: string; needOptimize: boolean = true);
 
 		procedure addAll(folder: string; ext: string = '*');
 		procedure add(bmpFileToAdd: string; paletteIndex: integer; needOptimize: boolean = true); overload;
@@ -319,7 +319,7 @@ begin
 end;
 
 
-procedure MMArchSimple.delete(fileToDelete: string);
+procedure MMArchSimple.delete(fileToDelete: string; needOptimize: boolean = true);
 var
 	fileIndex: integer;
 begin
@@ -328,7 +328,8 @@ begin
 		raise Exception.CreateFmt(FileNotFound, [fileToDelete])
 	else
 		arch.RawFiles.Delete(fileIndex);
-	optimize;
+	if needOptimize then
+		optimize;
 end;
 
 
@@ -374,12 +375,14 @@ begin
 	begin
 		tLod.LoadBitmapsLods(ExtractFilePath(arch.RawFiles.FileName));
 		paletteIndex := getPalette(RSLoadBitmap(fileToAdd));
-		add(fileToAdd, paletteIndex);
+		add(fileToAdd, paletteIndex, needOptimize);
 	end
 	else
+	begin
 		arch.Add(fileToAdd);
 		if needOptimize then
 			optimize;
+	end;
 end;
 
 

@@ -2,7 +2,7 @@
 
 Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows.
 
-[Download mmarch v3.2](https://github.com/might-and-magic/mmarch/releases/download/v3.2/mmarch.7z)
+[Download mmarch v4.0](https://github.com/might-and-magic/mmarch/releases/download/v4.0/mmarch.7z)
 
 Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([repo](https://github.com/GrayFace/Misc/)). If you need a graphical user interface tool, use MMArchive.
 
@@ -495,6 +495,7 @@ How to compile the source of **mmarch**:
 * [2020-03-31] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer; tutorial
 * [2020-04-02] v3.1: diff-files-to-* instead of compare-files-to-*; diff-add-keep; fix problem moving to subfolder
 * [2020-04-22] v3.2: minor fix: diff-files-to-* do not work when old and new diff folders are the same
+* [2026-03-15] v4.0: performance: batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files
 
 ## License
 

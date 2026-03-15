@@ -20,7 +20,7 @@ type
 	MissingParamException = class(Exception);
 
 const
-	MMARCHVERSION: string = '3.2';
+	MMARCHVERSION: string = '4.0';
 	MMARCHURL: string = 'https://github.com/might-and-magic/mmarch';
 
 var
@@ -254,7 +254,7 @@ begin
 					paletteIndex := strtoint(ParamStr(i + 2));
 
 					try // the individual resource file will be skipped if it gets an exception
-						archSimp.add(filePath, paletteIndex);
+						archSimp.add(filePath, paletteIndex, false);
 					except
 						on E: Exception do
 							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
@@ -265,7 +265,7 @@ begin
 				else
 				begin
 					try // the individual resource file will be skipped if it gets an exception
-						archSimp.add(filePath);
+						archSimp.add(filePath, false);
 					except
 						on E: Exception do
 							WriteLn(format(FileErrorStr, [beautifyPath(filePath), E.Message]));
@@ -275,6 +275,7 @@ begin
 		end;
 		i := i + 1; // increment no matter what
 	end;
+	archSimp.optimize;
 end;
 
 
@@ -312,7 +313,7 @@ begin
 			else
 			begin
 				try // the individual resource file will be skipped if it gets an exception
-					archSimp.delete(fileName);
+					archSimp.delete(fileName, false);
 				except
 					on E: Exception do
 						WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
@@ -320,6 +321,7 @@ begin
 			end;
 		end;
 	end;
+	archSimp.optimize;
 end;
 
 
