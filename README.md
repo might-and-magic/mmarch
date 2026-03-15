@@ -1,8 +1,10 @@
-# [mmarch](https://github.com/might-and-magic/mmarch)
+# `mmarch`: CLI Tool Handling MM678 & HoMM3 Archive Files Cross-platform
 
-Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows.
+Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows, Linux and macOS.
 
-[Download mmarch v4.0](https://github.com/might-and-magic/mmarch/releases/download/v4.0/mmarch.7z)
+[Download mmarch v4.0 for Windows](https://github.com/might-and-magic/mmarch/releases/download/v4.0/mmarch.exe)
+
+Linux: [linux-x64](https://github.com/might-and-magic/mmarch/releases/download/v4.0/mmarch-linux-x64), [linux-arm64](https://github.com/might-and-magic/mmarch/releases/download/v4.0/mmarch-linux-arm64), [linux-ia32](https://github.com/might-and-magic/mmarch/releases/download/v4.0/mmarch-linux-ia32) | macOS: [darwin-x64](https://github.com/might-and-magic/mmarch/releases/download/v4.0/mmarch-darwin-x64), [darwin-arm64](https://github.com/might-and-magic/mmarch/releases/download/v4.0/mmarch-darwin-arm64)
 
 Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([repo](https://github.com/GrayFace/Misc/)). If you need a graphical user interface tool, use MMArchive.
 
@@ -21,13 +23,17 @@ mmarch compare &lt;ARCHIVE_FILE_OR_FOLDER&gt; &lt;ARCHIVE_FILE_OR_FOLDER_2&gt; <
 mmarch compare &lt;ARCHIVE_FILE_OR_FOLDER&gt; &lt;ARCHIVE_FILE_OR_FOLDER_2&gt; <a href="#filesonly">filesonly</a> &lt;DIFF_FOLDER&gt;
 mmarch <a href="#diff-files-to-nsis-batch">diff-files-to-{nsis|batch}</a> &lt;OLD_DIFF_FOLDER&gt; &lt;SCRIPT_FILE&gt; &lt;DIFF_FOLDER_NAME&gt;
 mmarch <a href="#diff-add-keep"><strong>d</strong>iff-<strong>a</strong>dd-<strong>k</strong>eep</a> &lt;DIFF_FOLDER&gt;
+mmarch <a href="#checksum">check<strong>s</strong>um</a> &lt;ARCHIVE_FILE&gt;
+mmarch checksum &lt;ARCHIVE_FILE&gt; [FILE_1] [FILE_2] [...]
+mmarch checksum &lt;ARCHIVE_FILE&gt; /v[all] &lt;CRC32_FILE&gt;
+mmarch checksum &lt;ARCHIVE_FILE&gt; /v[all] name1:HASH1 [name2:HASH2] [...]
 mmarch <a href="#optimize"><strong>o</strong>ptimize</a> &lt;ARCHIVE_FILE&gt;
 mmarch <a href="#help"><strong>h</strong>elp</a>
 </pre>
 
 `<>`: required; `[]`: optional; `{a|b|c}`: required, choose one of them
 
-For the first argument, use <code><strong>k</strong></code> for <code>compare</code>, <code><strong>df2n</strong></code> for <code>diff-files-to-nsis</code>, <code><strong>df2b</strong></code> for <code>diff-files-to-batch</code>, <code><strong>dak</strong></code> for <code>diff-add-keep</code>, otherwise, use the initial letter as a shortcut.
+For the first argument, use <code><strong>k</strong></code> for <code>compare</code>, <code><strong>s</strong></code> for <code>checksum</code>, <code><strong>df2n</strong></code> for <code>diff-files-to-nsis</code>, <code><strong>df2b</strong></code> for <code>diff-files-to-batch</code>, <code><strong>dak</strong></code> for <code>diff-add-keep</code>, otherwise, use the initial letter as a shortcut.
 
 * Usage Notes: | [`FOLDER`](#notes-on-folder) | [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) | [Batch archive extraction](#batch-archive-extraction) | [Palette](#add-file-with-palette) arguments | [Other notes](#other-tips-and-notes)
 * For developer: | [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files) | [Compilation](#compilation) | [Change Log](#change-log)
@@ -285,6 +291,85 @@ mmarch diff-add-keep <DIFF_FOLDER>
 
 This is for developers using Git. It will add an empty file `.mmarchkeep` to every empty folder in `DIFF_FOLDER`, so that Git can keep the empty folders tracked. `diff-files-to-nsis`/`-batch` ignore `.mmarchkeep` files.
 
+## `checksum`
+
+Generate or verify CRC32 checksums for archive files and their resources.
+
+(`s` is short for `checksum`)
+
+### Generate CRC32
+
+```
+mmarch checksum <ARCHIVE_FILE>
+```
+
+Generate CRC32 hash of the archive file (or any file) itself.
+
+```
+mmarch checksum <ARCHIVE_FILE> [FILE_1] [FILE_2] [...]
+```
+
+Generate CRC32 of resource files inside the archive. Use `*` or `*.*` for all resources, `*.EXT` for extension filter. Read "[§ Notes on `FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_)" for wildcard details.
+
+Output format:
+
+```
+A1B2C3D4  items.txt
+E5F6A7B8  OUT04.EVT
+```
+
+(Uppercase hex CRC32, two spaces, filename. CRLF line endings)
+
+**Examples:**
+
+```
+mmarch checksum events.lod
+mmarch checksum events.lod *
+mmarch checksum events.lod items.txt OUT04.EVT
+mmarch checksum events.lod *.txt
+mmarch checksum events.lod * > events.lod.crc32
+```
+
+### Verify CRC32
+
+```
+mmarch checksum <ARCHIVE_FILE> /v <CRC32_FILE>
+```
+
+Verify CRC32 of resource files listed in `CRC32_FILE`. Only the files listed in the checksum file are verified.
+
+```
+mmarch checksum <ARCHIVE_FILE> /vall <CRC32_FILE>
+```
+
+Verify CRC32 of ALL resource files. Not only must every file listed in `CRC32_FILE` match, but the listed files must also be ALL the files in the archive (no unlisted files allowed).
+
+```
+mmarch checksum <ARCHIVE_FILE> /v name1:HASH1 [name2:HASH2] [...]
+mmarch checksum <ARCHIVE_FILE> /vall name1:HASH1 [name2:HASH2] [...]
+```
+
+Inline verify mode (if the first argument after `/v` or `/vall` contains `:`). Instead of reading checksums from a file, specify them directly as `filename:CRC32HASH` pairs.
+
+**Verify output:**
+
+```
+items.txt: OK
+OUT04.EVT: FAILED
+WARNING: 1 computed checksums did NOT match
+```
+
+The exit code is non-zero if any verification fails.
+
+**Examples:**
+
+```
+mmarch checksum events.lod /v events.lod.crc32
+mmarch checksum events.lod /vall wholefile.crc32
+mmarch checksum events.lod /v items.txt:A1B2C3D4 OUT04.EVT:E5F6A7B8
+mmarch checksum events.lod /vall items.txt:A1B2C3D4 OUT04.EVT:E5F6A7B8
+```
+
 ## `optimize`
 
 ```
@@ -395,7 +480,7 @@ Less important tips and notes include:
 
 ### Use initial letter for the first argument
 
-For the first argument, the initial letter of <code><strong>e</strong>xtract</code>, <code><strong>l</strong>ist</code>, <code><strong>a</strong>dd</code>, <code><strong>d</strong>elete</code>, <code><strong>r</strong>ename</code>, <code><strong>c</strong>reate</code>, <code><strong>m</strong>erge</code>, <code><strong>o</strong>ptimize</code>, <code><strong>h</strong>elp</code> can be used instead (e.g. <code>mmarch <strong>e</strong> events.lod myfolder</code>); use <code><strong>k</strong></code> for <code>compare</code>, <code><strong>df2n</strong></code> for <code>diff-files-to-nsis</code>, <code><strong>df2b</strong></code> for <code>diff-files-to-batch</code>, <code><strong>dak</strong></code> for <code>diff-add-keep</code>; they can be optionally preceded by a leading `-` or `--` which will do the same job.
+For the first argument, the initial letter of <code><strong>e</strong>xtract</code>, <code><strong>l</strong>ist</code>, <code><strong>a</strong>dd</code>, <code><strong>d</strong>elete</code>, <code><strong>r</strong>ename</code>, <code><strong>c</strong>reate</code>, <code><strong>m</strong>erge</code>, <code><strong>o</strong>ptimize</code>, <code><strong>h</strong>elp</code> can be used instead (e.g. <code>mmarch <strong>e</strong> events.lod myfolder</code>); use <code><strong>k</strong></code> for <code>compare</code>, <code><strong>s</strong></code> for <code>checksum</code>, <code><strong>df2n</strong></code> for <code>diff-files-to-nsis</code>, <code><strong>df2b</strong></code> for <code>diff-files-to-batch</code>, <code><strong>dak</strong></code> for <code>diff-add-keep</code>; they can be optionally preceded by a leading `-` or `--` which will do the same job.
 
 ### Paths are case-insensitive
 
@@ -481,13 +566,45 @@ The batch file will not perform a self-deletion, users have to delete .bat, mmar
 
 ## Compilation
 
-How to compile the source of **mmarch**:
+### Windows (Delphi)
 
-* `git clone` or download **mmarch**'s source
+Original Delphi version is available in the `mmarch-delphi/` directory. It is used to build Windows versions.
+
+* `git clone` or download mmarch's source
 * `git clone` or download [GrayFace/Misc](https://github.com/GrayFace/Misc)
-* Copy or move RSPak/ folder from GrayFace/Misc project into mmarch's source folder
+* Copy or move `RSPak/` folder from GrayFace/Misc project into mmarch's `mmarch-delphi/` folder
 * Open "mmarch.bdsproj" file with Borland Developer Studio 2006 or Delphi 10 (it may or may not work with newer version Borland, see [GrayFace's note](https://github.com/GrayFace/Misc))
 * Compile
+
+### Linux / macOS (Rust)
+
+A cross-platform Rust port is available in the `mmarch-rust/` directory. It has the same CLI interface and behavior as the Delphi version (outputs use CRLF line ending as well). It is used to build Linux and macOS versions.
+
+```bash
+cd mmarch-rust
+cargo build --release
+```
+
+The binary will be at `mmarch-rust/target/release/mmarch` (or `mmarch.exe` on Windows).
+
+### Running tests
+
+The Rust integration tests run against both the Rust binary and (on Windows, if present) the Delphi binary. Test data is included in `mmarch-rust/tests/`.
+
+```bash
+cd mmarch-rust
+cargo +stable-x86_64-pc-windows-gnu test --test integration --release
+```
+
+(Remove `+stable-x86_64-pc-windows-gnu` on non-Windows)
+
+### GitHub CI
+
+The workflow triggers on:
+
+- **Push** to `master` branch (Test)
+- **Pull requests** targeting `master` (Test)
+- **Tags** matching `v*` (Test-Build-Release)
 
 ## Change Log
 * [2020-03-11] v1.0: initial release
@@ -495,7 +612,7 @@ How to compile the source of **mmarch**:
 * [2020-03-31] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer; tutorial
 * [2020-04-02] v3.1: diff-files-to-* instead of compare-files-to-*; diff-add-keep; fix problem moving to subfolder
 * [2020-04-22] v3.2: minor fix: diff-files-to-* do not work when old and new diff folders are the same
-* [2026-03-15] v4.0: performance: batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files
+* [2026-03-16] v4.0: performance: batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files; add `checksum` command for CRC32 generation and verification; Rust port
 
 ## License
 

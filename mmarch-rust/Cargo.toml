@@ -1,0 +1,17 @@
+[package]
+name = "mmarch"
+version = "4.0.0"
+edition = "2021"
+description = "Command line tool to handle Heroes 3 and Might and Magic 6, 7, 8 resource archive files"
+repository = "https://github.com/might-and-magic/mmarch"
+license = "MIT"
+
+[dependencies]
+miniz_oxide = "0.7"
+
+[profile.release]
+opt-level = "z"       # optimize for size
+lto = true            # link-time optimization (eliminates dead code across crates)
+codegen-units = 1     # single codegen unit = better optimization
+panic = "abort"       # no unwinding = smaller binary
+strip = true          # strip debug symbols

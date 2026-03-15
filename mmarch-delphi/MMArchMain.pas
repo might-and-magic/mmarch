@@ -64,6 +64,8 @@ type
 		procedure merge(archiveFile2: string);
 
 		procedure optimize;
+
+		function matchesExtFilter(fileIndex: integer; ext: string): boolean;
 	end;
 
 
@@ -250,12 +252,7 @@ begin
 	fileCountMinusOne := fFiles.Count - 1;
 	for i := 0 to fileCountMinusOne do
 	begin
-		if (ext = '*')
-		or SameText(ext, ExtractFileExt(fFiles.Name[i]))
-		or (
-			SameText(getInArchiveExt(ext), ExtractFileExt(fFiles.Name[i])) and
-			verifyExtractedExt(i, ext)
-		) then
+		if matchesExtFilter(i, ext) then
 		begin
 			RSCreateDir(folder); // this function checks DirectoryExists()
 
@@ -293,19 +290,12 @@ procedure MMArchSimple.deleteAll(ext: string = '*');
 var
 	fFiles: TRSMMFiles;
 	fileCountMinusOne, i: integer;
-	currentFileExt: string;
 begin
 	fFiles := arch.RawFiles;
 	fileCountMinusOne := fFiles.Count - 1;
 	for i := fileCountMinusOne downto 0 do
 	begin
-		currentFileExt := ExtractFileExt(fFiles.Name[i]);
-		if (ext = '*')
-		or SameText(ext, currentFileExt)
-		or (
-			SameText(getInArchiveExt(ext), currentFileExt) and
-			verifyExtractedExt(i, ext)
-		) then
+		if matchesExtFilter(i, ext) then
 		begin
 			try // the individual resource file will be skipped if it gets an exception
 				fFiles.Delete(i);
@@ -450,6 +440,20 @@ begin
 	fFiles2.MergeTo(fFiles);
 
 	optimize;
+end;
+
+
+function MMArchSimple.matchesExtFilter(fileIndex: integer; ext: string): boolean;
+var
+	fFiles: TRSMMFiles;
+begin
+	fFiles := arch.RawFiles;
+	Result := (ext = '*')
+		or SameText(ext, ExtractFileExt(fFiles.Name[fileIndex]))
+		or (
+			SameText(getInArchiveExt(ext), ExtractFileExt(fFiles.Name[fileIndex])) and
+			verifyExtractedExt(fileIndex, ext)
+		);
 end;
 
 

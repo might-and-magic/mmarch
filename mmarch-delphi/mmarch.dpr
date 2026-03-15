@@ -14,7 +14,7 @@ program mmarch;
 
 
 uses
-	Windows, SysUtils, StrUtils, Classes, RSLod, MMArchMain, MMArchPath, MMArchCompare, RSQ;
+	Windows, SysUtils, StrUtils, Classes, RSLod, MMArchMain, MMArchPath, MMArchCompare, MMArchChecksum, RSQ;
 
 type
 	MissingParamException = class(Exception);
@@ -101,6 +101,10 @@ begin
 	WriteLn('mmarch compare <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER + '> <' + HELPPRM_ARCHIVE_FILE_OR_FOLDER_2 + '> filesonly <' + HELPPRM_DIFF_FOLDER + '>');
 	WriteLn('mmarch diff-files-to-{nsis|batch} <' + HELPPRM_OLD_DIFF_FOLDER + '> <' + HELPPRM_SCRIPT_FILE + '> <' + HELPPRM_DIFF_FOLDER_NAME + '>');
 	WriteLn('mmarch diff-add-keep <' + HELPPRM_DIFF_FOLDER + '>');
+    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '>');
+    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> [FILE_1] [FILE_2] [...]');
+    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> /v[all] <CRC32_FILE>');
+    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> /v[all] name1:HASH1 [name2:HASH2] [...]');
 	WriteLn('mmarch optimize <' + HELPPRM_ARCHIVE_FILE + '>');
 	WriteLn('mmarch help');
 
@@ -534,6 +538,191 @@ begin
 end;
 
 
+procedure checksumCmd;
+var
+	archSimp: MMArchSimple;
+	param3, param4, fileName, line, resName, expectedHash, actualHash, ext: string;
+	i, failCount, missingCount, colonPos: integer;
+	isVerify, isVerifyAll, isInline: boolean;
+	checksumLines, verifyPairs, archFileNames: TStringList;
+	fFiles: TRSMMFiles;
+begin
+	param3 := ParamStr(3);
+
+	// Determine mode
+	isVerify := SameText(param3, '/v');
+	isVerifyAll := SameText(param3, '/vall');
+
+	if isVerify or isVerifyAll then
+	begin
+		// === Verify mode ===
+		param4 := ParamStr(4);
+		if param4 = '' then
+			raise MissingParamException.Create(InsufficientParameters);
+
+		archSimp := MMArchSimple.load(archiveFile);
+		fFiles := archSimp.getTRSMMArchive.RawFiles;
+
+		// Determine if inline (first arg after /v contains ':')
+		isInline := (Pos(':', param4) > 0);
+
+		verifyPairs := TStringList.Create;
+		try
+			if isInline then
+			begin
+				// Parse inline name:HASH pairs
+				for i := 4 to ParamCount do
+				begin
+					line := ParamStr(i);
+					if line <> '' then
+						verifyPairs.Add(line);
+				end;
+			end
+			else
+			begin
+				// Read from file
+				checksumLines := TStringList.Create;
+				try
+					checksumLines.LoadFromFile(param4);
+					for i := 0 to checksumLines.Count - 1 do
+					begin
+						line := Trim(checksumLines[i]);
+						if line <> '' then
+						begin
+							// Format: "HASH  filename" -> convert to "filename:HASH"
+							// Hash is 8 chars, then two spaces, then filename
+							if (Length(line) > 10) and (line[9] = ' ') and (line[10] = ' ') then
+								verifyPairs.Add(Copy(line, 11, MaxInt) + ':' + Copy(line, 1, 8))
+							else
+								verifyPairs.Add(line); // try as-is (name:HASH)
+						end;
+					end;
+				finally
+					checksumLines.Free;
+				end;
+			end;
+
+			failCount := 0;
+
+			for i := 0 to verifyPairs.Count - 1 do
+			begin
+				line := verifyPairs[i];
+				colonPos := Pos(':', line);
+				if colonPos > 0 then
+				begin
+					resName := Copy(line, 1, colonPos - 1);
+					expectedHash := UpperCase(Copy(line, colonPos + 1, MaxInt));
+
+					try
+						actualHash := Copy(ChecksumResourceFile(archSimp,resName), 1, 8);
+						if SameText(actualHash, expectedHash) then
+							WriteLn(resName + ': OK')
+						else
+						begin
+							WriteLn(resName + ': FAILED');
+							Inc(failCount);
+						end;
+					except
+						on E: Exception do
+						begin
+							WriteLn(resName + ': FAILED');
+							Inc(failCount);
+						end;
+					end;
+				end;
+			end;
+
+			// /vall: check for files in archive not listed
+			if isVerifyAll then
+			begin
+				archFileNames := TStringList.Create;
+				try
+					// Build list of verified names (lowercased for comparison)
+					for i := 0 to verifyPairs.Count - 1 do
+					begin
+						line := verifyPairs[i];
+						colonPos := Pos(':', line);
+						if colonPos > 0 then
+							archFileNames.Add(AnsiLowerCase(Copy(line, 1, colonPos - 1)));
+					end;
+
+					missingCount := 0;
+					for i := 0 to fFiles.Count - 1 do
+					begin
+						resName := fFiles.Name[i];
+						if archFileNames.IndexOf(AnsiLowerCase(resName)) < 0 then
+						begin
+							// Also check extracted name (may differ from in-archive name)
+							fileName := archSimp.getTRSMMArchive.GetExtractName(i);
+							if archFileNames.IndexOf(AnsiLowerCase(fileName)) < 0 then
+								Inc(missingCount);
+						end;
+					end;
+
+					if missingCount > 0 then
+						WriteLn('WARNING: ' + IntToStr(missingCount) + ' files in archive not listed in checksum');
+				finally
+					archFileNames.Free;
+				end;
+			end;
+
+			if failCount > 0 then
+			begin
+				WriteLn('WARNING: ' + IntToStr(failCount) + ' computed checksums did NOT match');
+				ExitCode := 1;
+			end;
+
+		finally
+			verifyPairs.Free;
+		end;
+	end
+	else
+	begin
+		// === Generate mode ===
+		if param3 = '' then
+		begin
+			// No extra params: CRC32 of the file itself (no archive parsing needed)
+			Write(CRC32ToHex(CRC32File(archiveFile)) + '  ' + ExtractFileName(archiveFile) + #13#10);
+		end
+		else
+		begin
+			archSimp := MMArchSimple.load(archiveFile);
+
+			if (param3 = '*') or (param3 = '*.*') then
+			begin
+				// All resource files
+				Write(ChecksumAllResources(archSimp));
+			end
+			else if Pos('*', param3) > 0 then
+			begin
+				// Wildcard match
+				ext := wildcardFileNameToExt(param3);
+				Write(ChecksumAllResources(archSimp, ext));
+			end
+			else
+			begin
+				// Specific files
+				for i := 3 to ParamCount do
+				begin
+					fileName := ParamStr(i);
+					if fileName <> '' then
+					begin
+						try
+							Write(ChecksumResourceFile(archSimp,fileName) + #13#10);
+						except
+							on E: Exception do
+							begin
+								WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
+							end;
+						end;
+					end;
+				end;
+			end;
+		end;
+	end;
+end;
+
+
 begin
 
 	try
@@ -543,11 +732,12 @@ begin
 			'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm',
 			'compare', 'k', 'optimize', 'o',
 			'diff-files-to-nsis', 'df2n', 'diff-files-to-batch', 'df2b', 'diff-add-keep', 'dak',
+			'checksum', 's',
 			'help', 'h', '']);
 		archiveFile := ParamStr(2);
 
-		// < 24: method is not `help`
-		if (archiveFile = '') And (methodNumber < 24) And (methodNumber >= 0) then
+		// < 26: method is not `help`
+		if (archiveFile = '') And (methodNumber < 26) And (methodNumber >= 0) then
 			raise MissingParamException.Create(NeedArchiveFile);
 
 		Case methodNumber of
@@ -563,7 +753,8 @@ begin
 			18, 19: diffFilesToNsis;
 			20, 21: diffFilesToBatch;
 			22, 23: diffAddKeep;
-			24, 25, 26: help;
+			24, 25: checksumCmd;
+			26, 27, 28: help;
 		else // -1: not found in the array
 			raise MissingParamException.CreateFmt(UnknownMethod, [method]);
 		end;
