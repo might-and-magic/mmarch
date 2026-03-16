@@ -3605,3 +3605,41 @@ fn test_real_h3mm78vid() {
         );
     }
 }
+
+// --- Heroes 3 specific formats ---
+
+#[test]
+fn test_real_h3lod() {
+    // h3lod: .pcx in-archive → .bmp extracted; .h3c stays as-is
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_h3.lod",
+            &["ab.h3c", "Ar_Bg.pcx", "ArA_CoBl.pcx"],
+            &["ab.h3c", "Ar_Bg.bmp", "ArA_CoBl.bmp"],
+            &[("ab.h3c", "E03F056B"), ("Ar_Bg.bmp", "D8C4FC21"), ("ArA_CoBl.bmp", "671BF215")],
+        );
+    }
+}
+
+#[test]
+fn test_real_h3snd() {
+    // h3snd: no extension in-archive → .wav extracted
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_h3.snd",
+            &["Azurattk", "Azurdfnd", "Azurkill"],
+            &["Azurattk.wav", "Azurdfnd.wav", "Azurkill.wav"],
+            &[("Azurattk.wav", "035C29FF"), ("Azurdfnd.wav", "929FE477"), ("Azurkill.wav", "1DC26581")],
+        );
+    }
+}
+
+#[test]
+fn test_real_h3vid() {
+    // h3vid: keeps original extension (.bik)
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_h3.vid",
+            &["C1ab7.bik", "C1db2.bik"],
+            &["C1ab7.bik", "C1db2.bik"],
+            &[("C1ab7.bik", "C7248045"), ("C1db2.bik", "B5D8F584")],
+        );
+    }
+}
