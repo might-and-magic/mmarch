@@ -1,5 +1,8 @@
-# RSPak (external dependency, not committed)
+# RSPak (external dependency, not committed, except patched files)
 /RSPak/
+!/RSPak/Extra/
+/RSPak/Extra/*
+!/RSPak/Extra/RSLod.pas
 
 # Delphi compiler-generated binaries (safe to delete)
 *.exe

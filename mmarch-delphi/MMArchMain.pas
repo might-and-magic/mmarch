@@ -117,6 +117,9 @@ function MMArchSimple.getInArchiveExt(extractedExt: string): string;
 var
 	ver: TRSLodVersion;
 begin
+	Result := extractedExt;
+	if not (arch is TRSLod) then
+		exit;
 	ver := TRSLod(arch).Version;
 
 	// | Type         | Archive Format | In-Archive Ext | Extracted Ext |
@@ -158,8 +161,9 @@ end;
 
 function MMArchSimple.getIndexByFileName(fileName: string): integer;
 var
-	fileName2, ext: string;
-	indexTemp: integer;
+	fileName2, ext, extractedName: string;
+	indexTemp, i: integer;
+	fFiles: TRSMMFiles;
 begin
 	if fileName = '' then
 		raise Exception.Create(FileNameEmpty);
@@ -170,7 +174,7 @@ begin
 	// it's actually a fuzzy match and unreliable
 	// (icons.lod '2HSword1.bmp' can get 2HSword2.bmp's index)
 	Result := getIndexByExactFileName(fileName2);
-	
+
 	if Result = -1 then // it may be caused by the difference between in-archive and extracted file extensions
 	begin
 		ext := ExtractFileExt(fileName2);
@@ -180,8 +184,24 @@ begin
 
 		indexTemp := getIndexByExactFileName(fileName2);
 
-		if verifyExtractedExt(indexTemp, ext) then
+		if (indexTemp >= 0) and verifyExtractedExt(indexTemp, ext) then
 			Result := indexTemp;
+	end;
+
+	// Fallback: match by extracted name (handles VID/SND where stored name differs)
+	if Result = -1 then
+	begin
+		fFiles := arch.RawFiles;
+		for i := 0 to fFiles.Count - 1 do
+		begin
+			extractedName := arch.GetExtractName(i);
+			if SameText(fileName, extractedName) or
+			   SameText(fileName, ChangeFileExt(extractedName, '')) then
+			begin
+				Result := i;
+				exit;
+			end;
+		end;
 	end;
 
 end;
@@ -237,6 +257,8 @@ procedure MMArchSimple.extractAll(folder: string; ext: string = '*');
 var
 	fFiles: TRSMMFiles;
 	fileCountMinusOne, i: integer;
+	rawPath: string;
+	rawMs: TMemoryStream;
 begin
 	fFiles := arch.RawFiles;
 	fileCountMinusOne := fFiles.Count - 1;
@@ -251,8 +273,23 @@ begin
 			except
 				on E: Exception do
 				begin
-					WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fFiles.Name[i]), beautifyPath(fFiles.FileName)]));
-					WriteLn(E.Message);
+					// Fall back to raw extraction (e.g. sprites without BitmapsLod)
+					try
+						rawPath := withTrailingSlash(folder) + arch.GetExtractName(i);
+						rawMs := TMemoryStream.Create;
+						try
+							fFiles.RawExtract(i, rawMs);
+							RSSaveFile(rawPath, rawMs);
+						finally
+							rawMs.Free;
+						end;
+					except
+						on E2: Exception do
+						begin
+							WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fFiles.Name[i]), beautifyPath(fFiles.FileName)]));
+							WriteLn(E2.Message);
+						end;
+					end;
 				end;
 			end;
 		end;
@@ -263,6 +300,8 @@ end;
 procedure MMArchSimple.extract(folder: string; fileToExtract: string);
 var
 	fileIndex: integer;
+	rawPath: string;
+	rawMs: TMemoryStream;
 begin
 	fileIndex := getIndexByFileName(fileToExtract);
 
@@ -271,7 +310,22 @@ begin
 	else
 	begin
 		RSCreateDir(folder);
-		arch.Extract(fileIndex, folder);
+		try
+			arch.Extract(fileIndex, folder);
+		except
+			on E: Exception do
+			begin
+				// Fall back to raw extraction (e.g. sprites without BitmapsLod)
+				rawPath := withTrailingSlash(folder) + arch.GetExtractName(fileIndex);
+				rawMs := TMemoryStream.Create;
+				try
+					arch.RawFiles.RawExtract(fileIndex, rawMs);
+					RSSaveFile(rawPath, rawMs);
+				finally
+					rawMs.Free;
+				end;
+			end;
+		end;
 	end;
 end;
 

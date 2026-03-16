@@ -2708,6 +2708,58 @@ fn test_delete_preserves_remaining_content() {
 }
 
 // ---------------------------------------------------------------------------
+// G.18b: Create with many files — verify all extracted content (RSLod Add regression)
+// Tests that file data is not corrupted when directory grows across data regions.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_create_many_files_content_integrity() {
+    let file_data: Vec<(&str, &[u8])> = vec![
+        ("f1.txt", b"content of file one"),
+        ("f2.txt", b"second file here"),
+        ("f3.txt", b"third"),
+        ("f4.txt", b"file number four with more data"),
+        ("f5.txt", b"five"),
+    ];
+
+    // Test across archive types with different ItemSize values
+    let types: Vec<(&str, &str)> = vec![
+        ("test.lod", "mmiconslod"),      // ItemSize=0x20
+        ("test.dod", "mm78save"),         // ItemSize=0x20, chapter LOD
+        ("test.mm6", "mm6save"),          // ItemSize=0x20, chapter LOD
+        ("games.lod", "mm78gameslod"),    // ItemSize=0x20, games LOD
+    ];
+
+    for (label, ref bin) in get_binaries() {
+        for (arch_name, arch_type) in &types {
+            let dir = temp_dir(&format!("many_{}_{}", arch_type, label));
+
+            let mut create_args: Vec<&str> = vec!["create", arch_name, arch_type, "."];
+            for (name, data) in &file_data {
+                write_test_file(&dir.join(name), data);
+                create_args.push(name);
+            }
+
+            run_ok_in(bin, &dir, &create_args);
+
+            let names = list_archive_in(bin, &dir, arch_name);
+            assert_eq!(names.len(), file_data.len(),
+                "[{}] {} file count: {:?}", label, arch_type, names);
+
+            run_ok_in(bin, &dir, &["extract", arch_name, "out"]);
+
+            for (name, expected) in &file_data {
+                let actual = fs::read(dir.join("out").join(name)).unwrap();
+                assert_eq!(actual, *expected,
+                    "[{}] {} file '{}' content mismatch", label, arch_type, name);
+            }
+
+            cleanup(&dir);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // G.19: Merge detailed verification
 // ---------------------------------------------------------------------------
 

@@ -298,7 +298,7 @@ begin
 end;
 
 
-procedure addProc(archSimp: MMArchSimple; paramIndexFrom: integer);
+procedure addProc(archSimp: MMArchSimple; paramIndexFrom: integer; baseFolder: string = '');
 var
 	filePath, ext, folder, fileName: string;
 	i, paletteIndex: integer;
@@ -307,6 +307,10 @@ begin
 	while i <= CleanParamCount do
 	begin
 		filePath := CleanParamStr(i);
+		// If baseFolder is given (from create) and file doesn't exist at raw path, prepend baseFolder
+		if (baseFolder <> '') and (filePath <> '') and (Pos('*', filePath) = 0) and
+		   not FileExists(filePath) and FileExists(withTrailingSlash(baseFolder) + filePath) then
+			filePath := withTrailingSlash(baseFolder) + filePath;
 		if filePath <> '' then // has file to add
 		begin
 			folder := ExtractFilePath(filePath);
@@ -386,7 +390,7 @@ begin
 				except
 					on E: Exception do
 					begin
-						WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
+						WriteLn(ErrOutput, format(FileErrorStr, [beautifyPath(fileName), E.Message]));
 						Inc(notFoundCount);
 					end;
 				end;
@@ -425,7 +429,7 @@ begin
 
 	archSimp := MMArchSimple.create;
 	archSimp.new(archiveFile, archiveFileType, folder);
-	addProc(archSimp, 5);
+	addProc(archSimp, 5, folder);
 end;
 
 
@@ -731,7 +735,7 @@ begin
 					end;
 
 					if missingCount > 0 then
-						WriteLn('WARNING: ' + IntToStr(missingCount) + ' files in archive not listed in checksum');
+						WriteLn(ErrOutput, 'WARNING: ' + IntToStr(missingCount) + ' files in archive not listed in checksum');
 				finally
 					archFileNames.Free;
 				end;
@@ -739,7 +743,7 @@ begin
 
 			if failCount > 0 then
 			begin
-				WriteLn('WARNING: ' + IntToStr(failCount) + ' computed checksums did NOT match');
+				WriteLn(ErrOutput, 'WARNING: ' + IntToStr(failCount) + ' computed checksums did NOT match');
 				ExitCode := 1;
 			end;
 
@@ -800,14 +804,14 @@ begin
 
 	try
 
-		method := trimCharLeft(CleanCleanParamStr(1), '-');
+		method := trimCharLeft(CleanParamStr(1), '-');
 		methodNumber := AnsiIndexStr(method, ['extract', 'e', 'list', 'l',
 			'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm',
 			'compare', 'k', 'optimize', 'o',
 			'diff-files-to-nsis', 'df2n', 'diff-files-to-batch', 'df2b', 'diff-add-keep', 'dak',
 			'checksum', 's',
 			'help', 'h', '']);
-		archiveFile := CleanCleanParamStr(2);
+		archiveFile := CleanParamStr(2);
 
 		// < 26: method is not `help`
 		if (archiveFile = '') And (methodNumber < 26) And (methodNumber >= 0) then
@@ -836,14 +840,14 @@ begin
 		on E: ItemNotFoundException do
 		begin
 			// Per-item not-found in delete/extract: only exit 1 in strict mode
-			WriteLn(format(ErrorStr, [E.Message]));
+			WriteLn(ErrOutput, format(ErrorStr, [E.Message]));
 			if ecMode = ecStrict then
 				ExitCode := 1;
 		end;
 		on E: MissingParamException do
 		begin
-			WriteLn(format(ErrorStr, [E.Message]));
-			WriteLn;
+			WriteLn(ErrOutput, format(ErrorStr, [E.Message]));
+			WriteLn(ErrOutput);
 			help(true);
 			// normal/strict: exit 1; loose: exit 0
 			if ecMode <> ecLoose then
@@ -851,7 +855,7 @@ begin
 		end;
 		on E: Exception do
 		begin
-			WriteLn(format(ErrorStr, [E.Message]));
+			WriteLn(ErrOutput, format(ErrorStr, [E.Message]));
 			// normal/strict: exit 1; loose: exit 0
 			if ecMode <> ecLoose then
 				ExitCode := 1;

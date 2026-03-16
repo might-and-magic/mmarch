@@ -603,7 +603,7 @@ Original Delphi version is available in the `mmarch-delphi/` directory. It is us
 
 * `git clone` or download mmarch's source
 * `git clone` or download [GrayFace/Misc](https://github.com/GrayFace/Misc)
-* Copy or move `RSPak/` folder from GrayFace/Misc project into mmarch's `mmarch-delphi/` folder
+* Copy or move `RSPak/` folder from GrayFace/Misc project into mmarch's `mmarch-delphi/` folder. **Do not overwrite** the patched `RSPak/Extra/RSLod.pas` already in the repo, it contains a bug fix for file data corruption when adding multiple files to an archive.
 * Open "mmarch.bdsproj" file with Borland Developer Studio 2006 or Delphi 10 (it may or may not work with newer version Borland, see [GrayFace's note](https://github.com/GrayFace/Misc))
 * Compile
 
@@ -653,7 +653,7 @@ The workflow triggers on:
 * [2020-04-02] v3.1: diff-files-to-* instead of compare-files-to-*; diff-add-keep; fix problem moving to subfolder
 * [2020-04-22] v3.2: minor fix: diff-files-to-* do not work when old and new diff folders are the same
 * [2026-03-16] v4.0.0: fix batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files; add `checksum` command for CRC32 generation and verification; Rust port for Linux and macOS; npm release
-* [2026-03-17] v5.0.0: more Rust version fixes and comprehensive tests; replace ambiguous `/v[all]` with `--v[all]` flag; improve exit code handling instead of returning 0 in nearly all cases
+* [2026-03-17] v5.0.0: more Rust version fixes and comprehensive tests; replace ambiguous `/v[all]` with `--v[all]` flag; improve exit code handling instead of returning 0 in nearly all cases; fix some minor bugs of Delphi version
 
 ## License
 
