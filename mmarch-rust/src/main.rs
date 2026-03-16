@@ -14,7 +14,7 @@ use std::fs;
 use std::io;
 use std::sync::OnceLock;
 
-const MMARCH_VERSION: &str = "4.0.0";
+const MMARCH_VERSION: &str = "5.0.0";
 const MMARCH_URL: &str = "https://github.com/might-and-magic/mmarch";
 
 // ============================================================
@@ -205,7 +205,7 @@ fn cmd_extract(args: &[String]) -> io::Result<()> {
 
     if archive_file.contains('*') {
         // Batch extraction
-        let archive_list = wildcard_archive_name_to_archive_list(archive_file);
+        let archive_list = wildcard_archive_name_to_archive_list(archive_file)?;
         for (name, folder) in &archive_list {
             let full_path = format!("{}{}", with_trailing_slash(folder), name);
             match DynArchive::load(&full_path) {
@@ -294,7 +294,7 @@ fn extract_all(arch: &dyn Archive, folder: &str, ext: &str) {
             entry_ext.is_empty()
         } else {
             entry_ext.eq_ignore_ascii_case(ext)
-                || check_extracted_ext_match(arch.kind(), &entry.name, ext)
+                || check_extracted_ext_match(arch, i, ext)
         };
 
         if matches {
@@ -310,11 +310,14 @@ fn extract_all(arch: &dyn Archive, folder: &str, ext: &str) {
     }
 }
 
-fn check_extracted_ext_match(kind: ArchiveKind, in_archive_name: &str, requested_ext: &str) -> bool {
-    // Check if the requested extracted ext maps to this in-archive name
+fn check_extracted_ext_match(arch: &dyn Archive, index: usize, requested_ext: &str) -> bool {
+    // Check if the requested extracted ext maps to this in-archive name,
+    // AND verify the entry actually extracts to that ext (disambiguates .bmp/.act)
+    // (matches Delphi: MMArchMain.pas:436 matchesExtFilter with verifyExtractedExt)
+    let kind = arch.kind();
     if let Some(in_ext) = kind.in_archive_ext(requested_ext) {
-        let in_archive_ext = get_file_ext(in_archive_name);
-        in_archive_ext.eq_ignore_ascii_case(in_ext)
+        let in_archive_ext = get_file_ext(&arch.entries()[index].name);
+        in_archive_ext.eq_ignore_ascii_case(in_ext) && arch.verify_extracted_ext(index, requested_ext)
     } else {
         false
     }
@@ -457,7 +460,7 @@ fn add_proc(arch: &mut DynArchive, args: &[String], from: usize) -> io::Result<(
 }
 
 fn add_all(arch: &mut DynArchive, folder: &str, ext: &str) -> io::Result<()> {
-    let files = get_all_files_in_folder(folder, ext, false);
+    let files = get_all_files_in_folder(folder, ext, false)?;
     for fname in &files {
         let full_path = format!("{}{}", with_trailing_slash(folder), fname);
         if let Err(e) = arch.add_file(&full_path) {
@@ -524,7 +527,7 @@ fn delete_all(arch: &mut DynArchive, ext: &str) {
         } else {
             // Check both in-archive extension and extracted extension
             entry_ext.eq_ignore_ascii_case(ext)
-                || check_extracted_ext_match(arch.as_archive().kind(), &entry.name, ext)
+                || check_extracted_ext_match(arch.as_archive(), i, ext)
         };
         if matches {
             to_remove.push(i);
@@ -681,7 +684,7 @@ fn cmd_compare(args: &[String]) -> io::Result<()> {
                 &path2,
                 &format!("{}{}", with_trailing_slash(&get_file_dir(&script_path)), &diff_folder_name),
                 true,
-            );
+            )?;
             if !result.same {
                 script_gen::generate_script(
                     &result.deleted_folders,
@@ -708,7 +711,7 @@ fn cmd_compare(args: &[String]) -> io::Result<()> {
                 &path2,
                 &format!("{}{}", with_trailing_slash(&get_file_dir(&script_path)), &diff_folder_name),
                 true,
-            );
+            )?;
             if !result.same {
                 script_gen::generate_script(
                     &result.deleted_folders,
@@ -729,10 +732,10 @@ fn cmd_compare(args: &[String]) -> io::Result<()> {
                     "Insufficient parameters",
                 ));
             }
-            compare::compare_base(path1, &path2, &diff_folder, false);
+            compare::compare_base(path1, &path2, &diff_folder, false)?;
         }
         "" => {
-            compare::compare_base(path1, &path2, "", false);
+            compare::compare_base(path1, &path2, "", false)?;
         }
         _ => {
             return Err(io::Error::new(
@@ -772,8 +775,8 @@ fn cmd_diff_files_to_any(args: &[String], is_nsis: bool) -> io::Result<()> {
         return Ok(());
     }
 
-    let files = get_all_files_in_folder(&old_diff_folder, "*", false);
-    let dirs = get_all_files_in_folder(&old_diff_folder, "*", true);
+    let files = get_all_files_in_folder(&old_diff_folder, "*", false)?;
+    let dirs = get_all_files_in_folder(&old_diff_folder, "*", true)?;
     if files.is_empty() && dirs.is_empty() {
         println!("Folder `{}` is empty", old_diff_folder);
         return Ok(());
@@ -793,7 +796,7 @@ fn cmd_diff_files_to_any(args: &[String], is_nsis: bool) -> io::Result<()> {
         &mut deleted_non_res,
         &mut deleted_res,
         &mut modified_archives,
-    );
+    )?;
 
     let new_diff_folder = format!(
         "{}{}",
@@ -823,7 +826,7 @@ fn cmd_diff_files_to_any(args: &[String], is_nsis: bool) -> io::Result<()> {
 
 fn cmd_diff_add_keep(args: &[String]) -> io::Result<()> {
     let folder = &args[2];
-    add_keep_to_all_empty_folders_recur(folder);
+    add_keep_to_all_empty_folders_recur(folder)?;
     Ok(())
 }
 
@@ -846,16 +849,9 @@ fn cmd_checksum(args: &[String]) -> io::Result<()> {
             ));
         }
 
-        // Detect inline mode: first arg contains ":" but is not a file path.
-        // A Windows drive letter like "C:\..." has ":" at position 1, so we
-        // check that ":" exists and is NOT at position 1.
-        let is_inline = {
-            let first = &remaining[0];
-            match first.find(':') {
-                Some(pos) => pos != 1,
-                None => false,
-            }
-        };
+        // Detect inline mode: first arg contains ":"
+        // (matches Delphi: Pos(':', param4) > 0)
+        let is_inline = remaining[0].contains(':');
         let pairs = if is_inline {
             checksum::parse_inline_pairs(&remaining)
         } else {

@@ -3643,3 +3643,174 @@ fn test_real_h3vid() {
         );
     }
 }
+
+// ===========================================================================
+// Delphi alignment fixes
+// ===========================================================================
+
+// Fix #1: checksum --v a:HASH — single-char resource name inline verify
+// Rust used to treat "a:HASH" as a file path (colon at pos 1 = drive letter).
+// Delphi treats any ':' as inline mode. Now Rust matches.
+#[test]
+fn test_checksum_inline_single_char_name() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cs_sc_{}", label));
+        // Create an archive with a single-char-name file
+        write_test_file(&dir.join("a"), b"data for a");
+        run_ok_in(bin, &dir, &["create", "test.lod", "mmiconslod", ".", "a"]);
+
+        // Get the checksum of resource "a"
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "a"]);
+        let line = stdout.trim().trim_end_matches('\r');
+        let hash = &line[..8];
+
+        // Inline verify with single-char name: "a:HASH"
+        let pair = format!("a:{}", hash);
+        let (stdout2, stderr, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--v", &pair]);
+        assert!(ok, "[{}] inline verify of single-char name should succeed.\nstdout: {}\nstderr: {}",
+                label, stdout2, stderr);
+        assert!(stdout2.contains("OK"), "[{}] should contain OK: {}", label, stdout2);
+
+        cleanup(&dir);
+    }
+}
+
+// Fix #4: wildcard .act/.bmp matching — extract *.act should NOT include .bmp files
+// In a bitmaps LOD, extensionless entries are either .act (768-byte palette) or .bmp.
+// extract *.act must only get palette files, not bitmaps.
+#[test]
+fn test_wildcard_act_bmp_disambiguation() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("wild_actbmp_{}", label));
+        copy_test_file("pal994.act", &dir);
+        copy_test_file("testpal.bmp", &dir);
+        run_ok_in(bin, &dir, &["create", "test.bitmaps.lod", "mmbitmapslod",
+            ".", "pal994.act", "testpal.bmp"]);
+
+        // Extract only *.act — should get pal994.act but NOT testpal.bmp
+        let out_act = dir.join("out_act");
+        run_ok_in(bin, &dir, &["extract", "test.bitmaps.lod", &out_act.to_string_lossy(), "*.act"]);
+        assert!(out_act.join("pal994.act").exists(),
+                "[{}] pal994.act should be extracted by *.act", label);
+        assert!(!out_act.join("testpal.bmp").exists(),
+                "[{}] testpal.bmp should NOT be extracted by *.act", label);
+
+        // Extract only *.bmp — should get testpal.bmp but NOT pal994.act
+        let out_bmp = dir.join("out_bmp");
+        run_ok_in(bin, &dir, &["extract", "test.bitmaps.lod", &out_bmp.to_string_lossy(), "*.bmp"]);
+        assert!(out_bmp.join("testpal.bmp").exists(),
+                "[{}] testpal.bmp should be extracted by *.bmp", label);
+        assert!(!out_bmp.join("pal994.act").exists(),
+                "[{}] pal994.act should NOT be extracted by *.bmp", label);
+
+        cleanup(&dir);
+    }
+}
+
+// Fix #4: delete *.act should NOT delete .bmp files (and vice versa)
+#[test]
+fn test_wildcard_delete_act_bmp_disambiguation() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("wild_del_actbmp_{}", label));
+        copy_test_file("pal994.act", &dir);
+        copy_test_file("testpal.bmp", &dir);
+        run_ok_in(bin, &dir, &["create", "test.bitmaps.lod", "mmbitmapslod",
+            ".", "pal994.act", "testpal.bmp"]);
+
+        // Delete *.act — should remove pal994 but keep testpal
+        run_ok_in(bin, &dir, &["delete", "test.bitmaps.lod", "*.act"]);
+        let names = list_archive_in(bin, &dir, "test.bitmaps.lod");
+        assert!(!names.iter().any(|n| n.eq_ignore_ascii_case("pal994")),
+                "[{}] pal994 should be deleted by *.act: {:?}", label, names);
+        assert!(names.iter().any(|n| n.eq_ignore_ascii_case("testpal")),
+                "[{}] testpal should survive *.act delete: {:?}", label, names);
+
+        cleanup(&dir);
+    }
+}
+
+// Fix #5: compare with non-folder/non-archive should error (exit 1), not silently succeed
+#[test]
+fn test_compare_bad_input_errors() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cmp_bad_{}", label));
+        write_test_file(&dir.join("notarchive.txt"), b"hello");
+        write_test_file(&dir.join("other.txt"), b"world");
+
+        let (_, stderr, ok) = run_in(bin, &dir, &["compare", "notarchive.txt", "other.txt"]);
+        assert!(!ok, "[{}] compare of non-archive files should fail.\nstderr: {}", label, stderr);
+
+        cleanup(&dir);
+    }
+}
+
+// Fix #5: compare with bad archive should say "Incorrect MM Archive files" (no details)
+#[test]
+fn test_compare_bad_archive_error_message() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cmp_badarch_{}", label));
+        write_test_file(&dir.join("a.lod"), b"not a real lod");
+        write_test_file(&dir.join("b.lod"), b"also not real");
+
+        let (stdout, stderr, ok) = run_in(bin, &dir, &["compare", "a.lod", "b.lod"]);
+        let combined = format!("{}{}", stdout, stderr);
+        assert!(!ok, "[{}] compare of bad archives should fail", label);
+        assert!(combined.contains("Incorrect MM Archive files"),
+                "[{}] should mention 'Incorrect MM Archive files': {}", label, combined);
+
+        cleanup(&dir);
+    }
+}
+
+// Fix #8: compare_in_archive_data — entries with different unpacked sizes should be
+// considered different without needing to decompress.
+// This is tested indirectly: if two archives have an entry with same name but
+// different unpacked_size, compare should show it as modified.
+// (The existing compare tests already cover this, but we add an explicit one.)
+#[test]
+fn test_compare_detects_modified_entries() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cmp_mod_{}", label));
+
+        // Create two archives with same-named but different-content file
+        write_test_file(&dir.join("data.txt"), b"version1");
+        run_ok_in(bin, &dir, &["create", "old.lod", "mmiconslod", ".", "data.txt"]);
+
+        write_test_file(&dir.join("data.txt"), b"version2-longer");
+        run_ok_in(bin, &dir, &["create", "new.lod", "mmiconslod", ".", "data.txt"]);
+
+        let (stdout, _, _) = run_in(bin, &dir, &["compare", "old.lod", "new.lod"]);
+        assert!(stdout.contains("[m]") || stdout.contains("data.txt"),
+                "[{}] compare should detect modified entry: {}", label, stdout);
+
+        cleanup(&dir);
+    }
+}
+
+// Fix #9: add with non-existent folder should error
+#[test]
+fn test_add_nonexistent_folder_errors() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("add_nodir_{}", label));
+        write_test_file(&dir.join("dummy.txt"), b"x");
+        run_ok_in(bin, &dir, &["create", "test.lod", "mmiconslod", ".", "dummy.txt"]);
+
+        let (_, stderr, ok) = run_in(bin, &dir, &["add", "test.lod", "nonexistent_dir/*.txt"]);
+        assert!(!ok, "[{}] add from non-existent dir should fail.\nstderr: {}", label, stderr);
+
+        cleanup(&dir);
+    }
+}
+
+// Fix #9: diff-add-keep with non-existent folder should error
+#[test]
+fn test_diff_add_keep_nonexistent_folder_errors() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("dak_nodir_{}", label));
+
+        let (_, stderr, ok) = run_in(bin, &dir, &["diff-add-keep", "nonexistent_dir"]);
+        assert!(!ok, "[{}] diff-add-keep on non-existent dir should fail.\nstderr: {}", label, stderr);
+
+        cleanup(&dir);
+    }
+}

@@ -21,7 +21,7 @@ type
 	ItemNotFoundException = class(Exception); // per-item not-found in delete/extract
 
 const
-	MMARCHVERSION: string = '4.0.0';
+	MMARCHVERSION: string = '5.0.0';
 	MMARCHURL: string = 'https://github.com/might-and-magic/mmarch';
 
 type

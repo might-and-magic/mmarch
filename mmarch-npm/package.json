@@ -1,7 +1,7 @@
 {
   "name": "mmarch",
-  "version": "4.0.0",
-  "description": "Command line tool to handle Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files)",
+  "version": "5.0.0",
+  "description": "Command line tool to handle Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows, Linux and macOS",
   "author": "Tom Chen <tomchen.org@gmail.com>",
   "license": "MIT",
   "repository": {

@@ -176,7 +176,32 @@ pub fn move_dir(from: &str, to: &str) -> bool {
         let _ = fs::create_dir_all(parent);
     }
 
-    fs::rename(&from, &to).is_ok()
+    // Try rename first (fast path, same filesystem)
+    if fs::rename(&from, &to).is_ok() {
+        return true;
+    }
+
+    // Fall back to recursive copy + delete (cross-filesystem, like Delphi's ShFileOperation)
+    if copy_dir_recursive(&from, &to).is_ok() {
+        let _ = fs::remove_dir_all(&from);
+        return true;
+    }
+
+    false
+}
+
+fn copy_dir_recursive(from: &str, to: &str) -> io::Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let dest = format!("{}{}{}", with_trailing_slash(to), entry.file_name().to_string_lossy(), "");
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path().to_string_lossy(), &dest)?;
+        } else {
+            fs::copy(entry.path(), &dest)?;
+        }
+    }
+    Ok(())
 }
 
 pub fn is_subfolder(folder: &str, potential_subfolder: &str) -> bool {
@@ -197,13 +222,17 @@ pub fn is_subfolder(folder: &str, potential_subfolder: &str) -> bool {
 /// Get all files (or dirs) in a folder, optionally filtering by extension.
 /// ext: "*" = all, "" = no extension, ".xyz" = specific extension
 /// Returns just the file/dir names (not full paths).
-pub fn get_all_files_in_folder(path: &str, ext: &str, is_dir: bool) -> Vec<String> {
+pub fn get_all_files_in_folder(path: &str, ext: &str, is_dir: bool) -> io::Result<Vec<String>> {
     let mut result = Vec::new();
     let path = if path.is_empty() { "." } else { path };
-    let dir = match fs::read_dir(path) {
-        Ok(d) => d,
-        Err(_) => return result,
-    };
+    // Match Delphi: raise exception if directory does not exist (MMArchPath.pas:207-209)
+    if !Path::new(path).is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Directory {} is not found", path),
+        ));
+    }
+    let dir = fs::read_dir(path)?;
     for entry in dir.flatten() {
         let ft = match entry.file_type() {
             Ok(ft) => ft,
@@ -239,7 +268,7 @@ pub fn get_all_files_in_folder(path: &str, ext: &str, is_dir: bool) -> Vec<Strin
         }
     }
     result.sort();
-    result
+    Ok(result)
 }
 
 /// Recursively collect files or dirs.
@@ -253,10 +282,10 @@ pub fn add_all_files_to_file_list(
     is_dir: bool,
     use_path_filename_pair: bool,
     ext_list: &[String],
-) {
+) -> io::Result<()> {
     if recursive == 1 || recursive == 3 {
         for ext in ext_list {
-            for name in get_all_files_in_folder(path, ext, is_dir) {
+            for name in get_all_files_in_folder(path, ext, is_dir)? {
                 if use_path_filename_pair {
                     file_list.push(format!("{}:{}", name, beautify_path(path)));
                 } else {
@@ -266,14 +295,14 @@ pub fn add_all_files_to_file_list(
         }
     }
     if recursive != 3 {
-        let dirs = get_all_files_in_folder(path, "*", true);
+        let dirs = get_all_files_in_folder(path, "*", true)?;
         for dir in dirs {
             let sub = format!("{}{}", with_trailing_slash(path), dir);
             if recursive == 1 {
-                add_all_files_to_file_list(file_list, &sub, 1, is_dir, use_path_filename_pair, ext_list);
+                add_all_files_to_file_list(file_list, &sub, 1, is_dir, use_path_filename_pair, ext_list)?;
             } else if recursive == 2 {
                 for ext in ext_list {
-                    for name in get_all_files_in_folder(&sub, ext, is_dir) {
+                    for name in get_all_files_in_folder(&sub, ext, is_dir)? {
                         if use_path_filename_pair {
                             file_list.push(format!("{}:{}", name, beautify_path(&sub)));
                         } else {
@@ -284,6 +313,7 @@ pub fn add_all_files_to_file_list(
             }
         }
     }
+    Ok(())
 }
 
 pub fn add_all_files_default(
@@ -292,12 +322,12 @@ pub fn add_all_files_default(
     recursive: u32,
     is_dir: bool,
     use_path_filename_pair: bool,
-) {
+) -> io::Result<()> {
     let ext_list = vec!["*".to_string()];
-    add_all_files_to_file_list(file_list, path, recursive, is_dir, use_path_filename_pair, &ext_list);
+    add_all_files_to_file_list(file_list, path, recursive, is_dir, use_path_filename_pair, &ext_list)
 }
 
-pub fn wildcard_archive_name_to_archive_list(archive_name: &str) -> Vec<(String, String)> {
+pub fn wildcard_archive_name_to_archive_list(archive_name: &str) -> io::Result<Vec<(String, String)>> {
     let path = trim_chars_right(&get_file_dir(archive_name), '\\', '/');
     let filename = get_file_name(archive_name);
 
@@ -308,17 +338,17 @@ pub fn wildcard_archive_name_to_archive_list(archive_name: &str) -> Vec<(String,
     if path.ends_with("**") {
         let path_temp = &path[..path.len() - 2];
         let path_temp = trim_chars_right(path_temp, '\\', '/');
-        add_all_files_to_file_list(&mut raw_list, &path_temp, 1, false, true, &ext_list);
+        add_all_files_to_file_list(&mut raw_list, &path_temp, 1, false, true, &ext_list)?;
     } else if path.ends_with('*') {
         let path_temp = &path[..path.len() - 1];
         let path_temp = trim_chars_right(path_temp, '\\', '/');
-        add_all_files_to_file_list(&mut raw_list, &path_temp, 2, false, true, &ext_list);
+        add_all_files_to_file_list(&mut raw_list, &path_temp, 2, false, true, &ext_list)?;
     } else {
-        add_all_files_to_file_list(&mut raw_list, &path, 3, false, true, &ext_list);
+        add_all_files_to_file_list(&mut raw_list, &path, 3, false, true, &ext_list)?;
     }
 
     // Parse "name:path" pairs
-    raw_list
+    Ok(raw_list
         .iter()
         .map(|s| {
             if let Some(pos) = s.find(':') {
@@ -327,7 +357,7 @@ pub fn wildcard_archive_name_to_archive_list(archive_name: &str) -> Vec<(String,
                 (s.clone(), ".".to_string())
             }
         })
-        .collect()
+        .collect())
 }
 
 fn file_name_to_ext_list(filename: &str) -> Vec<String> {
@@ -353,20 +383,21 @@ fn file_name_to_ext_list(filename: &str) -> Vec<String> {
     }
 }
 
-pub fn add_keep_to_all_empty_folders_recur(folder: &str) {
+pub fn add_keep_to_all_empty_folders_recur(folder: &str) -> io::Result<()> {
     let folder = trim_chars_right(&beautify_path(folder), '\\', '/');
     let mut all_folders = vec![folder.clone()];
     let mut tmp = Vec::new();
-    add_all_files_default(&mut tmp, &folder, 1, true, false);
+    add_all_files_default(&mut tmp, &folder, 1, true, false)?;
     all_folders.extend(tmp);
 
     for f in &all_folders {
-        let dirs = get_all_files_in_folder(f, "*", true);
-        let files = get_all_files_in_folder(f, "*", false);
+        let dirs = get_all_files_in_folder(f, "*", true)?;
+        let files = get_all_files_in_folder(f, "*", false)?;
         if dirs.is_empty() && files.is_empty() {
             let _ = create_empty_file(&format!("{}{}{}", with_trailing_slash(f), "", EMPTY_FOLDER_KEEP));
         }
     }
+    Ok(())
 }
 
 pub fn compare_file_bytes(old_file: &str, new_file: &str) -> io::Result<bool> {
@@ -382,7 +413,7 @@ pub fn has_todelete_parent_folder(file_or_folder: &str, deleted_folders: &[Strin
         if parent.is_empty() {
             return false;
         }
-        if deleted_folders.iter().any(|f| f == &parent) {
+        if deleted_folders.iter().any(|f| f.eq_ignore_ascii_case(&parent)) {
             return true;
         }
     }

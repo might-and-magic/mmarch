@@ -2,9 +2,9 @@
 
 Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows, Linux and macOS.
 
-[Download mmarch v4.0.0 for Windows](https://github.com/might-and-magic/mmarch/releases/download/v4.0.0/mmarch.exe)
+[Download mmarch v5.0.0 for Windows](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch.exe)
 
-Other platforms: Linux [x64](https://github.com/might-and-magic/mmarch/releases/download/v4.0.0/mmarch-linux-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v4.0.0/mmarch-linux-arm64), [ia32](https://github.com/might-and-magic/mmarch/releases/download/v4.0.0/mmarch-linux-ia32) | macOS [x64](https://github.com/might-and-magic/mmarch/releases/download/v4.0.0/mmarch-darwin-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v4.0.0/mmarch-darwin-arm64) | or [`npm i -g mmarch`](https://www.npmjs.com/package/mmarch) with [Node.js](https://nodejs.org/)
+Other platforms: Linux [x64](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-linux-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-linux-arm64), [ia32](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-linux-ia32) | macOS [x64](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-darwin-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-darwin-arm64) | or [`npm i -g mmarch`](https://www.npmjs.com/package/mmarch) with [Node.js](https://nodejs.org/)
 
 Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([repo](https://github.com/GrayFace/Misc/)). If you need a graphical user interface tool, use MMArchive.
 
@@ -609,7 +609,7 @@ Original Delphi version is available in the `mmarch-delphi/` directory. It is us
 
 ### Linux / macOS (Rust)
 
-A cross-platform Rust port is available in the `mmarch-rust/` directory. It has the same CLI interface and behavior as the Delphi version (outputs use CRLF line ending as well). It is used to build Linux and macOS versions.
+A cross-platform Rust port is available in the `mmarch-rust/` directory. It has the same CLI interface and behavior as the Delphi version (outputs use CRLF line ending as well). It is used to build Linux and macOS versions. See [§ Known differences between Rust and Delphi versions](#known-differences-between-rust-and-delphi-versions) for minor gaps.
 
 ```bash
 cd mmarch-rust
@@ -617,6 +617,15 @@ cargo build --release
 ```
 
 The binary will be at `mmarch-rust/target/release/mmarch` (or `mmarch.exe` on Windows).
+
+### Known differences between Rust and Delphi versions
+
+The Rust port covers the same CLI interface as the Delphi version, but there are a few gaps:
+
+- **BMP palette handling (`/p` and auto-palette):** The Delphi version converts `.bmp` files to the internal LOD bitmap format with palette lookup when adding to `mmbitmapslod` or `mmspriteslod` archives. The Rust version stores `.bmp` files as generic data (BmpSize=0). The `/p PALETTE_INDEX` flag is accepted and validated but the palette index is not actually used for bitmap conversion. Auto-palette detection for `.bmp` files is also not implemented. Additionally, the Delphi version rejects non-BMP files in `mmspriteslod` archives, while the Rust version allows adding any file type.
+- **Non-ASCII case-insensitive comparison:** The Delphi version uses Windows locale-aware `SameText` for case-insensitive name matching (handles accented characters etc.). The Rust version uses ASCII-only case folding (`eq_ignore_ascii_case`). This only matters for archive entries with non-ASCII names, which are rare in game archives.
+- **File enumeration order:** The Rust version sorts file listings alphabetically when enumerating directories, while the Delphi version uses the raw `FindFirst`/`FindNext` order (typically alphabetical on NTFS). This may cause `add *.ext` or batch wildcard operations to produce entries in a slightly different order. Functionality is not affected.
+- **Unicode filesystem paths:** The Rust version fully supports Unicode paths. The Delphi version uses ANSI Win32 APIs and cannot handle non-ANSI characters in file or directory paths.
 
 ### Running tests
 

@@ -156,7 +156,12 @@ fn compare_in_archive_data(
     let old_entry = &old_archive.entries()[old_idx];
     let new_entry = &new_archive.entries()[new_idx];
 
-    // Delphi logic: first compare raw (packed) sizes
+    // First compare unpacked sizes (matches Delphi: MMArchCompare.pas:148)
+    if old_entry.unpacked_size != new_entry.unpacked_size {
+        return false;
+    }
+
+    // Then compare raw (packed) sizes
     if old_entry.size != new_entry.size {
         // Raw sizes differ. If neither is packed, they're different.
         if !old_entry.is_packed() && !new_entry.is_packed() {
@@ -253,7 +258,7 @@ pub fn compare_base(
     new_path: &str,
     copy_to_folder: &str,
     collect_lists: bool,
-) -> CompareResult {
+) -> io::Result<CompareResult> {
     let old_path = beautify_path(old_path);
     let new_path = beautify_path(new_path);
 
@@ -271,14 +276,11 @@ pub fn compare_base(
     {
         compare_archive_files(&old_path, &new_path, copy_to_folder, collect_lists, copy_to_folder_exists)
     } else {
-        eprintln!("Please specify two folders, or two MM Archive files");
-        CompareResult {
-            same: true,
-            deleted_folders: Vec::new(),
-            deleted_non_res_files: Vec::new(),
-            deleted_res_files: Vec::new(),
-            modified_archives: Vec::new(),
-        }
+        // Matches Delphi: raise Exception.Create(IncorrectFoldersOrMMArchives)
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Please specify two folders, or two MM Archive files",
+        ))
     }
 }
 
@@ -337,15 +339,15 @@ fn compare_folders(
     copy_to_folder: &str,
     collect_lists: bool,
     copy_to_folder_exists: bool,
-) -> CompareResult {
+) -> io::Result<CompareResult> {
     let old_prefix = with_trailing_slash(old_folder);
     let new_prefix = with_trailing_slash(new_folder);
 
     // Get all folders recursively
     let mut old_folder_list = Vec::new();
     let mut new_folder_list = Vec::new();
-    add_all_files_default(&mut old_folder_list, old_folder, 1, true, false);
-    add_all_files_default(&mut new_folder_list, new_folder, 1, true, false);
+    add_all_files_default(&mut old_folder_list, old_folder, 1, true, false)?;
+    add_all_files_default(&mut new_folder_list, new_folder, 1, true, false)?;
 
     // Strip root prefix
     let old_folder_list: Vec<String> = old_folder_list
@@ -360,8 +362,8 @@ fn compare_folders(
     // Get all files recursively
     let mut old_file_list_full = Vec::new();
     let mut new_file_list_full = Vec::new();
-    add_all_files_default(&mut old_file_list_full, old_folder, 1, false, false);
-    add_all_files_default(&mut new_file_list_full, new_folder, 1, false, false);
+    add_all_files_default(&mut old_file_list_full, old_folder, 1, false, false)?;
+    add_all_files_default(&mut new_file_list_full, new_folder, 1, false, false)?;
 
     let old_file_list: Vec<String> = old_file_list_full
         .iter()
@@ -377,7 +379,7 @@ fn compare_folders(
     let mut remaining_old_folders = old_folder_list.clone();
 
     for nf in &new_folder_list {
-        if let Some(pos) = remaining_old_folders.iter().position(|f| f == nf) {
+        if let Some(pos) = remaining_old_folders.iter().position(|f| f.eq_ignore_ascii_case(nf)) {
             remaining_old_folders.remove(pos);
         } else {
             added_folders.push(nf.clone());
@@ -411,7 +413,7 @@ fn compare_folders(
     let mut remaining_old_files = old_file_list.clone();
 
     for nf in &new_file_list {
-        if let Some(pos) = remaining_old_files.iter().position(|f| f == nf) {
+        if let Some(pos) = remaining_old_files.iter().position(|f| f.eq_ignore_ascii_case(nf)) {
             remaining_old_files.remove(pos);
 
             let old_full = format!("{}{}", old_prefix, nf);
@@ -587,13 +589,13 @@ fn compare_folders(
         }
     }
 
-    CompareResult {
+    Ok(CompareResult {
         same,
         deleted_folders: result_deleted_folders,
         deleted_non_res_files: result_deleted_non_res,
         deleted_res_files: result_deleted_res,
         modified_archives: result_modified_archives,
-    }
+    })
 }
 
 fn compare_archive_files(
@@ -602,18 +604,18 @@ fn compare_archive_files(
     copy_to_folder: &str,
     collect_lists: bool,
     copy_to_folder_exists: bool,
-) -> CompareResult {
+) -> io::Result<CompareResult> {
     // First check if files are identical
     match compare_file_bytes(old_path, new_path) {
         Ok(true) => {
             println!("Files are exactly the same");
-            return CompareResult {
+            return Ok(CompareResult {
                 same: true,
                 deleted_folders: Vec::new(),
                 deleted_non_res_files: Vec::new(),
                 deleted_res_files: Vec::new(),
                 modified_archives: Vec::new(),
-            };
+            });
         }
         _ => {}
     }
@@ -674,24 +676,19 @@ fn compare_archive_files(
                 }
             }
 
-            CompareResult {
+            Ok(CompareResult {
                 same: false,
                 deleted_folders: Vec::new(),
                 deleted_non_res_files: Vec::new(),
                 deleted_res_files: result_deleted_res,
                 modified_archives: result_modified_archives,
-            }
+            })
         }
-        Err(e) => {
-            eprintln!("Incorrect MM Archive files: {}", e);
-            CompareResult {
-                same: true,
-                deleted_folders: Vec::new(),
-                deleted_non_res_files: Vec::new(),
-                deleted_res_files: Vec::new(),
-                modified_archives: Vec::new(),
-            }
-        }
+        // Matches Delphi: raise Exception.Create(IncorrectMMArchive)
+        Err(_) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Incorrect MM Archive files",
+        )),
     }
 }
 
@@ -711,13 +708,13 @@ pub fn get_list_from_diff_files(
     deleted_non_res: &mut Vec<String>,
     deleted_res: &mut Vec<String>,
     modified_archives: &mut Vec<String>,
-) {
+) -> io::Result<()> {
     let prefix = with_trailing_slash(old_diff_folder);
 
     // .todelete folders
     let todelete_ext = vec![TODELETE_EXT.to_string()];
     let mut raw = Vec::new();
-    add_all_files_to_file_list(&mut raw, old_diff_folder, 1, true, false, &todelete_ext);
+    add_all_files_to_file_list(&mut raw, old_diff_folder, 1, true, false, &todelete_ext)?;
     for f in &raw {
         let mut rel = f.strip_prefix(&prefix).unwrap_or(f).to_string();
         // Remove .todelete from end
@@ -729,7 +726,7 @@ pub fn get_list_from_diff_files(
 
     // .todelete files
     raw.clear();
-    add_all_files_to_file_list(&mut raw, old_diff_folder, 1, false, false, &todelete_ext);
+    add_all_files_to_file_list(&mut raw, old_diff_folder, 1, false, false, &todelete_ext)?;
     for f in &raw {
         let mut rel = f.strip_prefix(&prefix).unwrap_or(f).to_string();
         if rel.ends_with(TODELETE_EXT) {
@@ -749,7 +746,7 @@ pub fn get_list_from_diff_files(
     // .mmarchive folders
     let mmarchive_ext = vec![MMARCHIVE_EXT.to_string()];
     raw.clear();
-    add_all_files_to_file_list(&mut raw, old_diff_folder, 1, true, false, &mmarchive_ext);
+    add_all_files_to_file_list(&mut raw, old_diff_folder, 1, true, false, &mmarchive_ext)?;
     for f in &raw {
         let mut rel = f.strip_prefix(&prefix).unwrap_or(f).to_string();
         if rel.ends_with(MMARCHIVE_EXT) {
@@ -757,4 +754,5 @@ pub fn get_list_from_diff_files(
         }
         modified_archives.push(format!("{}{}", rel, ARCH_RES_SEPARATOR));
     }
+    Ok(())
 }
