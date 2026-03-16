@@ -202,16 +202,25 @@ impl LodArchive {
         // Determine kind
         let mut kind = detect_mm_kind(&version_str, &lod_type);
 
-        // For games/chapter LODs, check first entry's data for Games7 signatures
-        // The Delphi tool writes "GameMMVI" header but uses Games7 (16-byte) data format
+        // For games/chapter LODs, check entries' data for Games7 signatures.
+        // The Delphi tool writes "GameMMVI" header but uses Games7 (16-byte) data format.
+        // We scan all entries (not just the first) because non-compressed files
+        // (e.g. .bin, .txt) are stored without a Games7 header. Only compressed
+        // files (.blv, .odm, .dlv, .ddm) have the signature.
         if (kind == ArchiveKind::LodGames || kind == ArchiveKind::LodChapter) && count > 0 {
-            let first_entry_offset = archive_start as usize;
-            if first_entry_offset + 32 <= data.len() {
-                let first_addr = read_u32_le(data, first_entry_offset + 16);
-                let first_abs = archive_start as usize + first_addr as usize;
-                if first_abs + 8 <= data.len() {
-                    let sig1 = read_u32_le(data, first_abs);
-                    let sig2 = read_u32_le(data, first_abs + 4);
+            let item_sz = if kind == ArchiveKind::LodMM8 { MM8_ENTRY_SIZE } else { MM_ENTRY_SIZE };
+            let ns = if kind == ArchiveKind::LodMM8 { MM8_NAME_SIZE } else { MM_NAME_SIZE };
+            'sig_scan: for i in 0..count {
+                let eo = archive_start as usize + i * item_sz as usize;
+                if eo + item_sz as usize > data.len() { break; }
+                let entry_name = read_fixed_string(data, eo, ns);
+                // Only check entries that have compressed extensions
+                if !is_games_compressed_ext(&entry_name) { continue; }
+                let addr = read_u32_le(data, eo + ns);
+                let abs_addr = archive_start as usize + addr as usize;
+                if abs_addr + 8 <= data.len() {
+                    let sig1 = read_u32_le(data, abs_addr);
+                    let sig2 = read_u32_le(data, abs_addr + 4);
                     if sig1 == GAMES7_SIG1 && sig2 == GAMES7_SIG2 {
                         kind = if kind == ArchiveKind::LodGames {
                             ArchiveKind::LodGames7
@@ -219,6 +228,7 @@ impl LodArchive {
                             ArchiveKind::LodChapter7
                         };
                     }
+                    break 'sig_scan;
                 }
             }
         }

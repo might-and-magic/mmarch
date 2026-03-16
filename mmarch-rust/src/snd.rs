@@ -56,37 +56,67 @@ impl SndArchive {
             });
         }
 
-        // Detect H3 vs MM: read first file's data and check for zlib header
-        // H3 SND entries: 48 bytes, MM SND entries: 52 bytes
-        // Try H3 first
-        let h3_first_entry_offset = 4;
-        if data.len() < h3_first_entry_offset + H3_SND_ENTRY_SIZE as usize {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "SND too small"));
-        }
-
-        let h3_first_addr = read_u32_le(&data, h3_first_entry_offset + 40) as usize;
-        let is_mm = if h3_first_addr < data.len() && h3_first_addr + 2 <= data.len() {
-            // Check if data at that offset starts with zlib magic (0x78 0x9C or similar)
-            let b0 = data[h3_first_addr];
-            let b1 = data[h3_first_addr + 1];
-            // zlib header: first byte is 0x78 (deflate, 32K window)
-            b0 == 0x78 && (b1 == 0x9C || b1 == 0x01 || b1 == 0xDA || b1 == 0x5E)
-        } else {
-            false
-        };
-
-        // Also check: if not zlib, check if it's RIFF (WAV) -> H3
-        let _is_h3 = if !is_mm && h3_first_addr + 4 <= data.len() {
-            &data[h3_first_addr..h3_first_addr + 4] == b"RIFF"
-        } else {
-            !is_mm
-        };
+        // Detect H3 vs MM by validating both interpretations.
+        // H3 SND entries: 48 bytes each. MM SND entries: 52 bytes each.
+        // We try both and pick the one where addresses are valid.
+        let is_mm = Self::detect_mm_snd(&data, count);
 
         if is_mm {
             Self::load_mm(path, &data, count)
         } else {
             Self::load_h3(path, &data, count)
         }
+    }
+
+    /// Detect whether this is an MM SND (52-byte entries) or H3 SND (48-byte entries).
+    /// We try both interpretations and validate addresses against file size.
+    fn detect_mm_snd(data: &[u8], count: usize) -> bool {
+        let file_size = data.len();
+
+        // Validate H3 interpretation (48-byte entries)
+        let h3_data_start = 4 + count * H3_SND_ENTRY_SIZE as usize;
+        let h3_valid = if h3_data_start <= file_size {
+            (0..count).all(|i| {
+                let off = 4 + i * H3_SND_ENTRY_SIZE as usize;
+                if off + H3_SND_ENTRY_SIZE as usize > file_size { return false; }
+                let addr = read_u32_le(data, off + 40) as usize;
+                let size = read_u32_le(data, off + 44) as usize;
+                addr >= h3_data_start && addr + size <= file_size
+            })
+        } else {
+            false
+        };
+
+        // Validate MM interpretation (52-byte entries)
+        let mm_data_start = 4 + count * MM_SND_ENTRY_SIZE as usize;
+        let mm_valid = if mm_data_start <= file_size {
+            (0..count).all(|i| {
+                let off = 4 + i * MM_SND_ENTRY_SIZE as usize;
+                if off + MM_SND_ENTRY_SIZE as usize > file_size { return false; }
+                let addr = read_u32_le(data, off + 40) as usize;
+                let size = read_u32_le(data, off + 44) as usize;
+                addr >= mm_data_start && addr + size <= file_size
+            })
+        } else {
+            false
+        };
+
+        if mm_valid && !h3_valid {
+            return true;
+        }
+        if h3_valid && !mm_valid {
+            return false;
+        }
+        // Both valid (or neither): fall back to zlib check on first entry
+        if h3_valid {
+            let off = 4 + 40; // first entry addr offset in H3 format
+            let addr = read_u32_le(data, off) as usize;
+            if addr + 2 <= file_size {
+                let b0 = data[addr];
+                return b0 == 0x78; // zlib magic
+            }
+        }
+        false
     }
 
     fn load_h3(path: &str, data: &[u8], count: usize) -> io::Result<Self> {

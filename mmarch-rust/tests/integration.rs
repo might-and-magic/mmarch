@@ -61,7 +61,7 @@ fn get_binaries() -> Vec<(&'static str, PathBuf)> {
     bins.push(("rust", rust_bin));
 
     let delphi = delphi_dir().join("mmarch.exe");
-    let has_delphi = delphi.exists();
+    let has_delphi = delphi.exists() && cfg!(target_os = "windows");
     if has_delphi {
         bins.push(("delphi", delphi));
     }
@@ -1080,6 +1080,9 @@ fn test_error_unknown_command() {
         let dir = temp_dir(&format!("err_unk_{}", label));
         let (stdout, stderr, ok) = run_in(bin, &dir, &["nonexistent_command"]);
         let combined = format!("{}{}", stdout, stderr).to_lowercase();
+        if label == "rust" {
+            assert!(!ok, "[{}] unknown command should have non-zero exit code", label);
+        }
         assert!(!ok || combined.contains("unknown") || combined.contains("error"),
                 "[{}] unknown command should error. ok={} stdout={} stderr={}", label, ok, stdout, stderr);
         cleanup(&dir);
@@ -1609,7 +1612,11 @@ fn test_delete_nonexistent_no_crash() {
         write_test_file(&dir.join("a.txt"), b"A");
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
-        let (_, _, _) = run_in(bin, &dir, &["d", "test.lod", "ghost.txt"]);
+        let (_, _, ok) = run_in(bin, &dir, &["d", "test.lod", "ghost.txt"]);
+        // Rust binary should return non-zero exit code for not-found file
+        if label == "rust" {
+            assert!(!ok, "[{}] delete nonexistent should fail", label);
+        }
         let names = list_archive_in(bin, &dir, "test.lod");
         assert!(names.contains(&"a.txt".to_string()), "[{}] intact", label);
 
@@ -1624,7 +1631,11 @@ fn test_rename_nonexistent_no_crash() {
         write_test_file(&dir.join("a.txt"), b"A");
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
-        let (_, _, _) = run_in(bin, &dir, &["r", "test.lod", "ghost.txt", "new.txt"]);
+        let (_, _, ok) = run_in(bin, &dir, &["r", "test.lod", "ghost.txt", "new.txt"]);
+        // Rust binary should return non-zero exit code for not-found file
+        if label == "rust" {
+            assert!(!ok, "[{}] rename nonexistent should fail", label);
+        }
         let names = list_archive_in(bin, &dir, "test.lod");
         assert!(names.contains(&"a.txt".to_string()), "[{}] intact", label);
 
@@ -1857,8 +1868,874 @@ fn test_extract_nonexistent_filter() {
         write_test_file(&dir.join("a.txt"), b"A");
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
-        let _ = run_in(bin, &dir, &["e", "test.lod", "out", "nonexistent.txt"]);
+        let (_, _, ok) = run_in(bin, &dir, &["e", "test.lod", "out", "nonexistent.txt"]);
+        if label == "rust" {
+            assert!(!ok, "[{}] extract nonexistent should fail", label);
+        }
         assert!(!dir.join("out/a.txt").exists(), "[{}] a.txt not extracted", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ===========================================================================
+// G: Tests from comprehensive bash testing (merged, no duplicates)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// G.1: Games LOD full workflow (create, add, extract, delete, rename, checksum)
+// Tests Bug #1 from bash testing: games.lod extract/delete/rename
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mm78gameslod_full_workflow() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("g78_full_{}", label));
+        let blv: Vec<u8> = (0..512).map(|i| ((i * 7 + 3) % 256) as u8).collect();
+        let dlv: Vec<u8> = (0..300).map(|i| ((i * 13 + 7) % 256) as u8).collect();
+        write_test_file(&dir.join("dungeon.blv"), &blv);
+        write_test_file(&dir.join("level.dlv"), &dlv);
+        write_test_file(&dir.join("readme.txt"), b"plain text data");
+
+        // Create
+        run_ok_in(bin, &dir, &["create", "test.lod", "mm78gameslod", ".",
+            "dungeon.blv", "level.dlv", "readme.txt"]);
+
+        // List
+        let names = list_archive_in(bin, &dir, "test.lod");
+        assert_eq!(names.len(), 3, "[{}] 3 files: {:?}", label, names);
+
+        // Extract specific
+        run_ok_in(bin, &dir, &["extract", "test.lod", "out1", "dungeon.blv"]);
+        assert_eq!(fs::read(dir.join("out1/dungeon.blv")).unwrap(), blv, "[{}] blv roundtrip", label);
+
+        // Extract all
+        run_ok_in(bin, &dir, &["extract", "test.lod", "out2"]);
+        assert_eq!(fs::read(dir.join("out2/readme.txt")).unwrap(), b"plain text data", "[{}]", label);
+
+        // Rename
+        run_ok_in(bin, &dir, &["rename", "test.lod", "readme.txt", "info.txt"]);
+        let names = list_archive_in(bin, &dir, "test.lod");
+        assert!(names.contains(&"info.txt".to_string()), "[{}] renamed: {:?}", label, names);
+        assert!(!names.contains(&"readme.txt".to_string()), "[{}] old gone: {:?}", label, names);
+
+        // Delete
+        run_ok_in(bin, &dir, &["delete", "test.lod", "level.dlv"]);
+        let names = list_archive_in(bin, &dir, "test.lod");
+        assert!(!names.contains(&"level.dlv".to_string()), "[{}] deleted: {:?}", label, names);
+        assert_eq!(names.len(), 2, "[{}] 2 remaining: {:?}", label, names);
+
+        // Checksum
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "*"]);
+        let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 2, "[{}] 2 checksums: {:?}", label, lines);
+
+        // Optimize
+        run_ok_in(bin, &dir, &["optimize", "test.lod"]);
+        run_ok_in(bin, &dir, &["extract", "test.lod", "out3"]);
+        assert_eq!(fs::read(dir.join("out3/dungeon.blv")).unwrap(), blv, "[{}] after optimize", label);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_mm6gameslod_full_workflow() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("g6_full_{}", label));
+        let blv: Vec<u8> = (0..400).map(|i| ((i * 11 + 5) % 256) as u8).collect();
+        write_test_file(&dir.join("map.blv"), &blv);
+        write_test_file(&dir.join("data.bin"), b"some data");
+
+        run_ok_in(bin, &dir, &["create", "test.lod", "mm6gameslod", ".", "map.blv", "data.bin"]);
+        let names = list_archive_in(bin, &dir, "test.lod");
+        assert_eq!(names.len(), 2, "[{}] 2 files: {:?}", label, names);
+
+        run_ok_in(bin, &dir, &["extract", "test.lod", "out", "map.blv"]);
+        assert_eq!(fs::read(dir.join("out/map.blv")).unwrap(), blv, "[{}]", label);
+
+        run_ok_in(bin, &dir, &["rename", "test.lod", "data.bin", "renamed.bin"]);
+        run_ok_in(bin, &dir, &["delete", "test.lod", "map.blv"]);
+        let names = list_archive_in(bin, &dir, "test.lod");
+        assert!(names.contains(&"renamed.bin".to_string()), "[{}]: {:?}", label, names);
+        assert!(!names.contains(&"map.blv".to_string()), "[{}]: {:?}", label, names);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.2: MM saves full workflow
+// Tests Bug from bash testing: save rename/delete
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mm78save_full_workflow() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("sv78_full_{}", label));
+        write_test_file(&dir.join("clock.bin"), b"clock data here");
+        write_test_file(&dir.join("save.dat"), b"save file data");
+        let dlv: Vec<u8> = (0..200).map(|i| ((i * 3) % 256) as u8).collect();
+        write_test_file(&dir.join("area.dlv"), &dlv);
+
+        run_ok_in(bin, &dir, &["create", "test.dod", "mm78save", ".", "clock.bin", "save.dat", "area.dlv"]);
+
+        let names = list_archive_in(bin, &dir, "test.dod");
+        assert_eq!(names.len(), 3, "[{}] 3 files: {:?}", label, names);
+
+        // Extract
+        run_ok_in(bin, &dir, &["extract", "test.dod", "out"]);
+        assert_eq!(fs::read(dir.join("out/clock.bin")).unwrap(), b"clock data here", "[{}]", label);
+        assert_eq!(fs::read(dir.join("out/area.dlv")).unwrap(), dlv, "[{}]", label);
+
+        // Rename
+        run_ok_in(bin, &dir, &["rename", "test.dod", "clock.bin", "timer.bin"]);
+        let names = list_archive_in(bin, &dir, "test.dod");
+        assert!(names.contains(&"timer.bin".to_string()), "[{}] renamed: {:?}", label, names);
+
+        // Delete
+        run_ok_in(bin, &dir, &["delete", "test.dod", "save.dat"]);
+        let names = list_archive_in(bin, &dir, "test.dod");
+        assert!(!names.contains(&"save.dat".to_string()), "[{}] deleted: {:?}", label, names);
+        assert_eq!(names.len(), 2, "[{}]: {:?}", label, names);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_mm6save_full_workflow() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("sv6_full_{}", label));
+        write_test_file(&dir.join("header.bin"), b"header");
+        write_test_file(&dir.join("party.dat"), b"party data content");
+
+        run_ok_in(bin, &dir, &["create", "test.mm6", "mm6save", ".", "header.bin", "party.dat"]);
+
+        let names = list_archive_in(bin, &dir, "test.mm6");
+        assert_eq!(names.len(), 2, "[{}]: {:?}", label, names);
+
+        // Extract + verify
+        run_ok_in(bin, &dir, &["extract", "test.mm6", "out"]);
+        assert_eq!(fs::read(dir.join("out/header.bin")).unwrap(), b"header", "[{}]", label);
+
+        // Rename
+        run_ok_in(bin, &dir, &["rename", "test.mm6", "header.bin", "hdr.bin"]);
+        let names = list_archive_in(bin, &dir, "test.mm6");
+        assert!(names.contains(&"hdr.bin".to_string()), "[{}]: {:?}", label, names);
+
+        // Delete
+        run_ok_in(bin, &dir, &["delete", "test.mm6", "party.dat"]);
+        let names = list_archive_in(bin, &dir, "test.mm6");
+        assert_eq!(names.len(), 1, "[{}]: {:?}", label, names);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.3: MM8 localization LOD full workflow
+// Tests Bug #2/#3 from bash testing: EnglishD/T.lod issues
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mm8loclod_full_workflow() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("mm8loc_full_{}", label));
+        write_test_file(&dir.join("2DEvents.txt"), b"event table data");
+        write_test_file(&dir.join("sounds.bin"), b"sound reference data");
+        write_test_file(&dir.join("D07.EVT"), b"event script");
+
+        run_ok_in(bin, &dir, &["create", "test.T.lod", "mm8loclod", ".",
+            "2DEvents.txt", "sounds.bin", "D07.EVT"]);
+
+        let names = list_archive_in(bin, &dir, "test.T.lod");
+        assert_eq!(names.len(), 3, "[{}] 3 files: {:?}", label, names);
+
+        // Extract specific
+        run_ok_in(bin, &dir, &["extract", "test.T.lod", "out", "2DEvents.txt"]);
+        // mm8loclod strips extension on store for non-.bmp: check what we get
+        let has_txt = dir.join("out/2DEvents.txt").exists();
+        let has_bmp = dir.join("out/2DEvents.bmp").exists();
+        assert!(has_txt || has_bmp, "[{}] extracted 2DEvents", label);
+
+        // Extract all
+        run_ok_in(bin, &dir, &["extract", "test.T.lod", "out2"]);
+
+        // Rename
+        run_ok_in(bin, &dir, &["rename", "test.T.lod", "D07.EVT", "D08.EVT"]);
+        let names = list_archive_in(bin, &dir, "test.T.lod");
+        assert!(names.contains(&"D08.EVT".to_string()), "[{}] renamed: {:?}", label, names);
+
+        // Delete
+        run_ok_in(bin, &dir, &["delete", "test.T.lod", "sounds.bin"]);
+        let names = list_archive_in(bin, &dir, "test.T.lod");
+        assert!(!names.contains(&"sounds.bin".to_string()), "[{}] deleted: {:?}", label, names);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.4: Bitmaps LOD full workflow (including palette support)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mmbitmapslod_full_workflow() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("bmp_full_{}", label));
+        copy_test_file("testpal.bmp", &dir);
+        copy_test_file("pal994.act", &dir);
+        write_test_file(&dir.join("extra.txt"), b"extra data");
+
+        // Create with bmp and act
+        run_ok_in(bin, &dir, &["create", "test.bitmaps.lod", "mmbitmapslod", ".",
+            "testpal.bmp", "pal994.act", "extra.txt"]);
+
+        let names = list_archive_in(bin, &dir, "test.bitmaps.lod");
+        assert!(names.len() >= 2, "[{}] at least 2 files: {:?}", label, names);
+
+        // Extract
+        run_ok_in(bin, &dir, &["extract", "test.bitmaps.lod", "out"]);
+        assert!(has_files_recursive(&dir.join("out")), "[{}] files extracted", label);
+
+        // Delete
+        run_ok_in(bin, &dir, &["delete", "test.bitmaps.lod", "extra.txt"]);
+        let names_after = list_archive_in(bin, &dir, "test.bitmaps.lod");
+        assert!(names_after.len() < names.len(), "[{}] file deleted", label);
+
+        // Add with /p palette
+        run_ok_in(bin, &dir, &["add", "test.bitmaps.lod", "testpal.bmp", "/p", "0"]);
+
+        // Optimize
+        run_ok_in(bin, &dir, &["optimize", "test.bitmaps.lod"]);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.5: Sprites LOD full workflow
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mmspriteslod_full_workflow() {
+    for (label, ref bin) in get_binaries() {
+        if label == "delphi" { continue; }
+        let dir = temp_dir(&format!("spr_full_{}", label));
+        write_test_file(&dir.join("sprite1.bin"), b"sprite data 1");
+        write_test_file(&dir.join("sprite2.bin"), b"sprite data 2");
+
+        run_ok_in(bin, &dir, &["create", "test.sprites.lod", "mmspriteslod", ".",
+            "sprite1.bin", "sprite2.bin"]);
+
+        let names = list_archive_in(bin, &dir, "test.sprites.lod");
+        assert_eq!(names.len(), 2, "[{}]: {:?}", label, names);
+
+        run_ok_in(bin, &dir, &["extract", "test.sprites.lod", "out"]);
+        run_ok_in(bin, &dir, &["rename", "test.sprites.lod", "sprite1.bin", "renamed.bin"]);
+        run_ok_in(bin, &dir, &["delete", "test.sprites.lod", "sprite2.bin"]);
+
+        let names = list_archive_in(bin, &dir, "test.sprites.lod");
+        assert_eq!(names.len(), 1, "[{}]: {:?}", label, names);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.6: Checksum /vall round-trip for multiple archive types
+// Tests Bug #4 from bash testing
+// ---------------------------------------------------------------------------
+
+fn checksum_vall_roundtrip(bin: &Path, label: &str, archtype: &str, ext: &str, prefix: &str) {
+    let dir = temp_dir(&format!("{}_{}", prefix, label));
+    let archive_name = format!("test.{}", ext);
+
+    write_test_file(&dir.join("alpha.txt"), b"Alpha file content");
+    write_test_file(&dir.join("beta.bin"), &[1, 2, 3, 4, 5, 6, 7, 8]);
+    write_test_file(&dir.join("gamma.dat"), b"Gamma data here for testing");
+
+    run_ok_in(bin, &dir, &["create", &archive_name, archtype, ".",
+        "alpha.txt", "beta.bin", "gamma.dat"]);
+
+    // Generate checksums for all files
+    let stdout = run_ok_in(bin, &dir, &["checksum", &archive_name, "*"]);
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(lines.len(), 3, "[{}] 3 checksums for {}: {:?}", label, archtype, lines);
+
+    // Write to file
+    fs::write(dir.join("all.crc32"), &stdout).unwrap();
+
+    // Verify with /v
+    let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", &archive_name, "/v", "all.crc32"]);
+    assert!(ok, "[{}] /v verify {} should succeed: {}", label, archtype, stdout2);
+
+    // Verify with /vall
+    let (stdout3, stderr3, ok) = run_in(bin, &dir, &["checksum", &archive_name, "/vall", "all.crc32"]);
+    assert!(ok, "[{}] /vall verify {} should succeed.\nstdout: {}\nstderr: {}", label, archtype, stdout3, stderr3);
+
+    cleanup(&dir);
+}
+
+#[test]
+fn test_checksum_vall_mmiconslod() {
+    for (label, ref bin) in get_binaries() {
+        checksum_vall_roundtrip(bin, label, "mmiconslod", "icons.lod", "cvall_icons");
+    }
+}
+
+#[test]
+fn test_checksum_vall_mm78gameslod() {
+    for (label, ref bin) in get_binaries() {
+        checksum_vall_roundtrip(bin, label, "mm78gameslod", "games.lod", "cvall_games78");
+    }
+}
+
+#[test]
+fn test_checksum_vall_mm78save() {
+    for (label, ref bin) in get_binaries() {
+        checksum_vall_roundtrip(bin, label, "mm78save", "dod", "cvall_sv78");
+    }
+}
+
+#[test]
+fn test_checksum_vall_mm6save() {
+    for (label, ref bin) in get_binaries() {
+        checksum_vall_roundtrip(bin, label, "mm6save", "mm6", "cvall_sv6");
+    }
+}
+
+#[test]
+fn test_checksum_vall_mm8loclod() {
+    for (label, ref bin) in get_binaries() {
+        checksum_vall_roundtrip(bin, label, "mm8loclod", "T.lod", "cvall_mm8loc");
+    }
+}
+
+#[test]
+fn test_checksum_vall_mmbitmapslod() {
+    for (label, ref bin) in get_binaries() {
+        checksum_vall_roundtrip(bin, label, "mmbitmapslod", "bitmaps.lod", "cvall_bitmaps");
+    }
+}
+
+#[test]
+fn test_checksum_vall_h3lod() {
+    for (label, ref bin) in get_binaries() {
+        checksum_vall_roundtrip(bin, label, "h3lod", "lod", "cvall_h3");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.7: Error exit codes (Bug #5 from bash testing)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_error_exit_code_delete_nonexistent() {
+    for (label, ref bin) in get_binaries() {
+        if label != "rust" { continue; }
+        let dir = temp_dir(&format!("ec_del_{}", label));
+        write_test_file(&dir.join("a.txt"), b"A");
+        run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
+
+        let (_, _, ok) = run_in(bin, &dir, &["delete", "test.lod", "nonexistent.xyz"]);
+        assert!(!ok, "[{}] delete nonexistent must return non-zero exit code", label);
+
+        // But archive should still be intact
+        let names = list_archive_in(bin, &dir, "test.lod");
+        assert!(names.contains(&"a.txt".to_string()), "[{}] archive intact", label);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_error_exit_code_rename_nonexistent() {
+    for (label, ref bin) in get_binaries() {
+        if label != "rust" { continue; }
+        let dir = temp_dir(&format!("ec_ren_{}", label));
+        write_test_file(&dir.join("a.txt"), b"A");
+        run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
+
+        let (_, _, ok) = run_in(bin, &dir, &["rename", "test.lod", "nonexistent.xyz", "new.xyz"]);
+        assert!(!ok, "[{}] rename nonexistent must return non-zero exit code", label);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_error_exit_code_extract_nonexistent() {
+    for (label, ref bin) in get_binaries() {
+        if label != "rust" { continue; }
+        let dir = temp_dir(&format!("ec_ext_{}", label));
+        write_test_file(&dir.join("a.txt"), b"A");
+        run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
+
+        let (_, _, ok) = run_in(bin, &dir, &["extract", "test.lod", "out", "nonexistent.xyz"]);
+        assert!(!ok, "[{}] extract nonexistent must return non-zero exit code", label);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_error_exit_code_unknown_command() {
+    for (label, ref bin) in get_binaries() {
+        if label != "rust" { continue; }
+        let dir = temp_dir(&format!("ec_unk_{}", label));
+
+        let (_, _, ok) = run_in(bin, &dir, &["totally_invalid_command"]);
+        assert!(!ok, "[{}] unknown command must return non-zero exit code", label);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_error_exit_code_missing_params() {
+    for (label, ref bin) in get_binaries() {
+        if label != "rust" { continue; }
+        let dir = temp_dir(&format!("ec_miss_{}", label));
+
+        // "list" without archive should fail
+        let (_, _, ok) = run_in(bin, &dir, &["list"]);
+        assert!(!ok, "[{}] missing params must return non-zero exit code", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.8: Games LOD with .odm and .ddm files (compressed extensions)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_games_lod_odm_roundtrip() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("g_odm_{}", label));
+        let odm: Vec<u8> = (0..500).map(|i| ((i * 19 + 11) % 256) as u8).collect();
+        let ddm: Vec<u8> = (0..350).map(|i| ((i * 23 + 7) % 256) as u8).collect();
+        write_test_file(&dir.join("world.odm"), &odm);
+        write_test_file(&dir.join("detail.ddm"), &ddm);
+
+        run_ok_in(bin, &dir, &["create", "test.lod", "mm78gameslod", ".",
+            "world.odm", "detail.ddm"]);
+
+        run_ok_in(bin, &dir, &["extract", "test.lod", "out"]);
+        assert_eq!(fs::read(dir.join("out/world.odm")).unwrap(), odm, "[{}] odm roundtrip", label);
+        assert_eq!(fs::read(dir.join("out/detail.ddm")).unwrap(), ddm, "[{}] ddm roundtrip", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.9: Cross-type merge
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_merge_different_types() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("merge_cross_{}", label));
+
+        write_test_file(&dir.join("a.txt"), b"from games");
+        run_ok_in(bin, &dir, &["create", "base.lod", "mm78gameslod", ".", "a.txt"]);
+
+        write_test_file(&dir.join("b.txt"), b"from save");
+        run_ok_in(bin, &dir, &["create", "other.lod", "mm78save", ".", "b.txt"]);
+
+        run_ok_in(bin, &dir, &["merge", "base.lod", "other.lod"]);
+        let names = list_archive_in(bin, &dir, "base.lod");
+        assert!(names.contains(&"a.txt".to_string()), "[{}]: {:?}", label, names);
+        assert!(names.contains(&"b.txt".to_string()), "[{}]: {:?}", label, names);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.10: Compare archives of various types
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_compare_games_archives() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cmp_games_{}", label));
+
+        write_test_file(&dir.join("a.txt"), b"version1");
+        run_ok_in(bin, &dir, &["create", "v1.lod", "mm78gameslod", ".", "a.txt"]);
+
+        write_test_file(&dir.join("a.txt"), b"version2");
+        write_test_file(&dir.join("b.txt"), b"new");
+        run_ok_in(bin, &dir, &["create", "v2.lod", "mm78gameslod", ".", "a.txt", "b.txt"]);
+
+        let (stdout, _, ok) = run_in(bin, &dir, &["compare", "v1.lod", "v2.lod"]);
+        assert!(ok, "[{}]", label);
+        assert!(stdout.contains("[+]") || stdout.contains("[m]"),
+                "[{}] diff markers: {}", label, stdout);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_compare_saves() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cmp_saves_{}", label));
+
+        write_test_file(&dir.join("data.bin"), b"old save");
+        run_ok_in(bin, &dir, &["create", "old.dod", "mm78save", ".", "data.bin"]);
+
+        write_test_file(&dir.join("data.bin"), b"new save");
+        run_ok_in(bin, &dir, &["create", "new.dod", "mm78save", ".", "data.bin"]);
+
+        let (stdout, _, ok) = run_in(bin, &dir, &["compare", "old.dod", "new.dod"]);
+        assert!(ok, "[{}]", label);
+        assert!(stdout.contains("[m]"), "[{}] modified: {}", label, stdout);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.11: Batch extract multiple archives (no crash on error)
+// Tests Bug #7: batch extract should not SIGABRT
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_batch_extract_multiple_lod_types() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("batch_multi_{}", label));
+
+        // Create various archive types in a subdirectory
+        let sub = dir.join("archives");
+        fs::create_dir_all(&sub).unwrap();
+
+        write_test_file(&sub.join("a.txt"), b"icons data");
+        write_test_file(&sub.join("b.txt"), b"games data");
+
+        run_ok_in(bin, &dir, &["create", "icons.lod", "mmiconslod", "archives", "a.txt"]);
+        run_ok_in(bin, &dir, &["create", "games.lod", "mm78gameslod", "archives", "b.txt"]);
+
+        // Batch extract *.lod from archives/
+        run_ok_in(bin, &dir, &["extract", "archives/*.lod", "output"]);
+
+        // Should have extracted without crashing
+        assert!(dir.join("output").exists(), "[{}] output dir created", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.12: SND full workflow (mmsnd and h3snd)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mmsnd_full_workflow() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("mmsnd_full_{}", label));
+        create_wav(&dir.join("sound1.wav"));
+        create_wav(&dir.join("sound2.wav"));
+
+        run_ok_in(bin, &dir, &["create", "test.snd", "mmsnd", ".", "sound1.wav", "sound2.wav"]);
+
+        let names = list_archive_in(bin, &dir, "test.snd");
+        assert_eq!(names.len(), 2, "[{}]: {:?}", label, names);
+
+        // Extract
+        run_ok_in(bin, &dir, &["extract", "test.snd", "out"]);
+        assert!(dir.join("out/sound1.wav").exists(), "[{}]", label);
+        assert!(dir.join("out/sound2.wav").exists(), "[{}]", label);
+
+        // Delete
+        run_ok_in(bin, &dir, &["delete", "test.snd", "sound1"]);
+        let names = list_archive_in(bin, &dir, "test.snd");
+        assert_eq!(names.len(), 1, "[{}] after delete: {:?}", label, names);
+
+        // Add back
+        create_wav(&dir.join("sound3.wav"));
+        run_ok_in(bin, &dir, &["add", "test.snd", "sound3.wav"]);
+        let names = list_archive_in(bin, &dir, "test.snd");
+        assert_eq!(names.len(), 2, "[{}] after add: {:?}", label, names);
+
+        // Checksum
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.snd", "*"]);
+        let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 2, "[{}] checksums: {:?}", label, lines);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.13: VID full workflow
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_vid_full_workflow() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("vid_full_{}", label));
+        write_test_file(&dir.join("clip1.smk"), b"video data 1");
+        write_test_file(&dir.join("clip2.smk"), b"video data 2");
+
+        run_ok_in(bin, &dir, &["create", "test.vid", "h3mm78vid", ".", "clip1.smk", "clip2.smk"]);
+
+        let names = list_archive_in(bin, &dir, "test.vid");
+        assert_eq!(names.len(), 2, "[{}]: {:?}", label, names);
+
+        run_ok_in(bin, &dir, &["extract", "test.vid", "out"]);
+        assert_eq!(fs::read(dir.join("out/clip1.smk")).unwrap(), b"video data 1", "[{}]", label);
+
+        // Delete
+        run_ok_in(bin, &dir, &["delete", "test.vid", "clip2"]);
+        let names = list_archive_in(bin, &dir, "test.vid");
+        assert_eq!(names.len(), 1, "[{}] after delete: {:?}", label, names);
+
+        // Checksum
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.vid"]);
+        assert!(stdout.contains("test.vid"), "[{}]: {}", label, stdout);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.14: Checksum extension-filtered
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_checksum_extension_filter() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cs_extf_{}", label));
+        write_test_file(&dir.join("a.txt"), b"A");
+        write_test_file(&dir.join("b.txt"), b"B");
+        write_test_file(&dir.join("c.bin"), b"C");
+        run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt", "b.txt", "c.bin"]);
+
+        // *.txt should match 2 files
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "*.txt"]);
+        let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 2, "[{}] 2 .txt files: {:?}", label, lines);
+
+        // *.bin should match 1
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "*.bin"]);
+        let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 1, "[{}] 1 .bin file: {:?}", label, lines);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.15: Checksum wrong hash detection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_checksum_wrong_hash_detection() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cs_wrong_{}", label));
+        write_test_file(&dir.join("a.txt"), b"A");
+        run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
+
+        // Verify with intentionally wrong hash
+        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "/v", "a.txt:00000000"]);
+        assert!(!ok, "[{}] wrong hash should fail", label);
+
+        // Verify with correct hash
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "a.txt"]);
+        let hash = &stdout.trim().trim_end_matches('\r')[..8];
+        let pair = format!("a.txt:{}", hash);
+        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "/v", &pair]);
+        assert!(ok, "[{}] correct hash should pass", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.16: Archive-level checksum (whole file)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_checksum_archive_level_various_types() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cs_al_{}", label));
+        write_test_file(&dir.join("data.txt"), b"content");
+
+        let types = vec![
+            ("icons.lod", "mmiconslod"),
+            ("games.lod", "mm78gameslod"),
+            ("save.dod", "mm78save"),
+        ];
+
+        for (fname, atype) in &types {
+            run_ok_in(bin, &dir, &["create", fname, atype, ".", "data.txt"]);
+            let stdout = run_ok_in(bin, &dir, &["checksum", fname]);
+            let line = stdout.trim().trim_end_matches('\r');
+            assert!(line.contains(fname), "[{}] {} checksum: {}", label, atype, line);
+            let parts: Vec<&str> = line.splitn(2, "  ").collect();
+            assert_eq!(parts.len(), 2, "[{}] {} format: {}", label, atype, line);
+            assert_eq!(parts[0].len(), 8, "[{}] {} 8-char hex: {}", label, atype, parts[0]);
+        }
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.17: Add after create with content for all types
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_add_to_all_types() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("add_all_{}", label));
+
+        let types: Vec<(&str, &str)> = vec![
+            ("icons.lod", "mmiconslod"),
+            ("games.lod", "mm78gameslod"),
+            ("g6.lod", "mm6gameslod"),
+            ("save.dod", "mm78save"),
+            ("save6.mm6", "mm6save"),
+            ("loc.T.lod", "mm8loclod"),
+        ];
+
+        write_test_file(&dir.join("init.txt"), b"initial");
+        write_test_file(&dir.join("added.txt"), b"added later");
+
+        for (fname, atype) in &types {
+            run_ok_in(bin, &dir, &["create", fname, atype, ".", "init.txt"]);
+            let before = list_archive_in(bin, &dir, fname);
+            assert_eq!(before.len(), 1, "[{}] {} initial: {:?}", label, atype, before);
+
+            run_ok_in(bin, &dir, &["add", fname, "added.txt"]);
+            let after = list_archive_in(bin, &dir, fname);
+            assert_eq!(after.len(), 2, "[{}] {} after add: {:?}", label, atype, after);
+        }
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.18: Delete and verify content integrity for remaining files
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_delete_preserves_remaining_content() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("del_int_{}", label));
+
+        let content_b = b"BBB content that should survive deletion";
+        let content_c = b"CCC content that should also survive";
+
+        write_test_file(&dir.join("a.txt"), b"AAA to be deleted");
+        write_test_file(&dir.join("b.txt"), content_b);
+        write_test_file(&dir.join("c.txt"), content_c);
+
+        run_ok_in(bin, &dir, &["create", "test.lod", "mm78gameslod", ".",
+            "a.txt", "b.txt", "c.txt"]);
+
+        run_ok_in(bin, &dir, &["delete", "test.lod", "a.txt"]);
+        run_ok_in(bin, &dir, &["extract", "test.lod", "out"]);
+
+        assert!(!dir.join("out/a.txt").exists(), "[{}] deleted", label);
+        assert_eq!(fs::read(dir.join("out/b.txt")).unwrap(), content_b, "[{}] b intact", label);
+        assert_eq!(fs::read(dir.join("out/c.txt")).unwrap(), content_c, "[{}] c intact", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.19: Merge detailed verification
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_merge_detailed_verification() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("merge_det_{}", label));
+
+        write_test_file(&dir.join("shared.txt"), b"base version");
+        write_test_file(&dir.join("only_base.txt"), b"only in base");
+        run_ok_in(bin, &dir, &["create", "base.lod", "mmiconslod", ".",
+            "shared.txt", "only_base.txt"]);
+
+        write_test_file(&dir.join("shared.txt"), b"other version");
+        write_test_file(&dir.join("only_other.txt"), b"only in other");
+        run_ok_in(bin, &dir, &["create", "other.lod", "mmiconslod", ".",
+            "shared.txt", "only_other.txt"]);
+
+        run_ok_in(bin, &dir, &["merge", "base.lod", "other.lod"]);
+
+        let names = list_archive_in(bin, &dir, "base.lod");
+        assert!(names.contains(&"shared.txt".to_string()), "[{}]", label);
+        assert!(names.contains(&"only_base.txt".to_string()), "[{}]", label);
+        assert!(names.contains(&"only_other.txt".to_string()), "[{}]", label);
+
+        // shared.txt should have the other version (replacement)
+        run_ok_in(bin, &dir, &["extract", "base.lod", "out"]);
+        assert_eq!(fs::read(dir.join("out/shared.txt")).unwrap(), b"other version",
+                   "[{}] merge replaces shared", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.20: Round-trip for mm6gameslod and mm6save
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_roundtrip_mm6gameslod() {
+    for (label, ref bin) in get_binaries() {
+        roundtrip_test(bin, label, "mm6gameslod", "lod", "rt_games6");
+    }
+}
+
+#[test]
+fn test_roundtrip_mm6save() {
+    for (label, ref bin) in get_binaries() {
+        roundtrip_test(bin, label, "mm6save", "mm6", "rt_mm6save");
+    }
+}
+
+#[test]
+fn test_roundtrip_mm78save() {
+    for (label, ref bin) in get_binaries() {
+        roundtrip_test(bin, label, "mm78save", "dod", "rt_mm78save");
+    }
+}
+
+#[test]
+fn test_roundtrip_mm8loclod() {
+    for (label, ref bin) in get_binaries() {
+        roundtrip_test(bin, label, "mm8loclod", "lod", "rt_mm8loc");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// G.21: Compare filesonly for various archive types
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_compare_filesonly_games_lod() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cmp_fo_games_{}", label));
+
+        write_test_file(&dir.join("old.txt"), b"old");
+        run_ok_in(bin, &dir, &["create", "v1.lod", "mm78gameslod", ".", "old.txt"]);
+
+        write_test_file(&dir.join("old.txt"), b"modified");
+        write_test_file(&dir.join("new.txt"), b"added");
+        run_ok_in(bin, &dir, &["create", "v2.lod", "mm78gameslod", ".", "old.txt", "new.txt"]);
+
+        run_ok_in(bin, &dir, &["compare", "v1.lod", "v2.lod", "filesonly", "diff"]);
+        let files = collect_files_recursive(&dir.join("diff"), &dir.join("diff"));
+        assert!(!files.is_empty(), "[{}] diff should have content: {:?}", label, files);
 
         cleanup(&dir);
     }

@@ -111,7 +111,10 @@ fn main() {
             eprintln!("Error: Unknown method: `{}`", method_str);
             println!();
             help(true);
-            Ok(())
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Unknown method: `{}`", method_str),
+            ))
         }
     };
 
@@ -119,6 +122,7 @@ fn main() {
         eprintln!("Error: {}", e);
         println!();
         help(true);
+        std::process::exit(1);
     }
 }
 
@@ -200,6 +204,7 @@ fn cmd_extract(args: &[String]) -> io::Result<()> {
         if file_filter.is_empty() {
             extract_all(arch.as_archive(), &extract_to_base, "*");
         } else {
+            let mut not_found_count = 0u32;
             for i in 4..args.len() {
                 let fname = &args[i];
                 if fname.contains('*') {
@@ -212,8 +217,15 @@ fn cmd_extract(args: &[String]) -> io::Result<()> {
                             beautify_path(archive_file)
                         );
                         eprintln!("{}", e);
+                        not_found_count += 1;
                     }
                 }
+            }
+            if not_found_count > 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("{} file(s) not found in the archive", not_found_count),
+                ));
             }
         }
     }
@@ -410,6 +422,7 @@ fn cmd_delete(args: &[String]) -> io::Result<()> {
         ));
     }
     let mut arch = DynArchive::load(archive_file)?;
+    let mut not_found_count = 0u32;
 
     for i in 3..args.len() {
         let fname = &args[i];
@@ -428,12 +441,19 @@ fn cmd_delete(args: &[String]) -> io::Result<()> {
                             beautify_path(fname),
                             fname
                         );
+                        not_found_count += 1;
                     }
                 }
             }
         }
     }
     arch.rebuild()?;
+    if not_found_count > 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("{} file(s) not found in the archive", not_found_count),
+        ));
+    }
     Ok(())
 }
 
@@ -829,7 +849,7 @@ fn help(short: bool) {
     println!("mmarch checksum <ARCHIVE_FILE>");
     println!("mmarch checksum <ARCHIVE_FILE> [FILE_1] [FILE_2] [...]");
     println!("mmarch checksum <ARCHIVE_FILE> /v[all] <CRC32_FILE>");
-    println!("mmarch checksum <ARCHIVE_FILE> /v[all] name1:HASH1 [name2:HASH2] [...]");
+    println!("mmarch checksum <ARCHIVE_FILE> /v[all] <name1:HASH1> [name2:HASH2] [...]");
     println!("mmarch optimize <ARCHIVE_FILE>");
     println!("mmarch help");
 
