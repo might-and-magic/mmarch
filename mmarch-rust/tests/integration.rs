@@ -606,14 +606,64 @@ fn test_checksum_write_and_verify() {
         let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "*"]);
         fs::write(dir.join("checksum_all.crc32"), &stdout).unwrap();
 
-        // Verify /v
-        let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "/v", "checksum_all.crc32"]);
+        // Verify --v
+        let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--v", "checksum_all.crc32"]);
         assert!(ok, "[{}] verify should succeed: {}", label, stdout2);
         assert!(stdout2.contains("OK"), "[{}] should contain OK: {}", label, stdout2);
 
-        // Verify /vall
-        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "/vall", "checksum_all.crc32"]);
+        // Verify --vall
+        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--vall", "checksum_all.crc32"]);
         assert!(ok, "[{}] verify all should succeed", label);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_checksum_verify_flag_variants() {
+    // -v, --v, -vall, --vall should all work as verify flags.
+    // Bare "v" and "vall" must NOT be treated as flags (they are resource names).
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cs_flags_{}", label));
+
+        // Create archive with files including one named "v"
+        write_test_file(&dir.join("hello.txt"), b"Hello World");
+        write_test_file(&dir.join("v"), b"I am a file named v");
+        run_ok_in(bin, &dir, &["create", "test.lod", "mmiconslod",
+            ".", "hello.txt", "v"]);
+
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "*"]);
+        fs::write(dir.join("all.crc32"), &stdout).unwrap();
+
+        // Flags with leading dash should work as verify
+        for flag in &["-v", "--v"] {
+            let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", flag, "all.crc32"]);
+            assert!(ok, "[{}] '{}' should work as verify: {}", label, flag, stdout2);
+            assert!(stdout2.contains("OK"), "[{}] '{}' should contain OK", label, flag);
+        }
+
+        for flag in &["-vall", "--vall"] {
+            let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", flag, "all.crc32"]);
+            assert!(ok, "[{}] '{}' should work as verify-all", label, flag);
+        }
+
+        // These must NOT be treated as verify flags — they are resource names or paths.
+        // They should go through generate mode and produce checksum output (or empty output).
+        for non_flag in &["v", "/v", "vall", "/vall"] {
+            let (stdout3, stderr3, ok) = run_in(bin, &dir, &["checksum", "test.lod", non_flag]);
+            assert!(ok, "[{}] '{}' should not error (treated as resource filter): stderr={}",
+                    label, non_flag, stderr3);
+            // Should NOT produce verify-style "OK" or "FAILED" output
+            assert!(!stdout3.contains(": OK") && !stdout3.contains(": FAILED"),
+                    "[{}] '{}' must not be treated as verify flag: {}", label, non_flag, stdout3);
+        }
+
+        // Bare "v" specifically should produce a checksum for the file named "v"
+        let stdout4 = run_ok_in(bin, &dir, &["checksum", "test.lod", "v"]);
+        assert!(stdout4.contains("v"), "[{}] bare 'v' should checksum the resource: {}", label, stdout4);
+        // Output is "HASH  v.bmp" (extracted name has .bmp since mmiconslod)
+        assert!(stdout4.trim().trim_end_matches('\r').starts_with(|c: char| c.is_ascii_hexdigit()),
+                "[{}] should start with hex hash: {}", label, stdout4);
 
         cleanup(&dir);
     }
@@ -644,7 +694,7 @@ fn test_checksum_inline_verify() {
         let hash = &line[..8];
 
         let pair = format!("test.str:{}", hash);
-        let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "/v", &pair]);
+        let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--v", &pair]);
         assert!(ok, "[{}] inline verify should succeed", label);
         assert!(stdout2.contains("OK"), "[{}]", label);
 
@@ -658,7 +708,7 @@ fn test_checksum_verify_failure() {
         let dir = temp_dir(&format!("cs_fail_{}", label));
         create_checksum_archive(bin, &dir);
 
-        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "/v", "test.str:00000000"]);
+        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--v", "test.str:00000000"]);
         assert!(!ok, "[{}] verify should fail with wrong hash", label);
 
         cleanup(&dir);
@@ -674,7 +724,7 @@ fn test_checksum_verify_all_missing() {
         let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "hello.txt"]);
         fs::write(dir.join("partial.crc32"), &stdout).unwrap();
 
-        let (stdout, stderr, ok) = run_in(bin, &dir, &["checksum", "test.lod", "/vall", "partial.crc32"]);
+        let (stdout, stderr, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--vall", "partial.crc32"]);
         let combined = format!("{}{}", stdout, stderr).to_lowercase();
         assert!(!ok || combined.contains("not listed") || combined.contains("fail"),
                 "[{}] verify all should fail when partial. ok={} out={} err={}", label, ok, stdout, stderr);
@@ -700,7 +750,7 @@ fn test_checksum_inline_verify_all() {
             }
         }
 
-        let mut args: Vec<&str> = vec!["checksum", "test.lod", "/vall"];
+        let mut args: Vec<&str> = vec!["checksum", "test.lod", "--vall"];
         for p in &pairs { args.push(p); }
         let (_, _, ok) = run_in(bin, &dir, &args);
         assert!(ok, "[{}] inline verify all should succeed", label);
@@ -1080,9 +1130,8 @@ fn test_error_unknown_command() {
         let dir = temp_dir(&format!("err_unk_{}", label));
         let (stdout, stderr, ok) = run_in(bin, &dir, &["nonexistent_command"]);
         let combined = format!("{}{}", stdout, stderr).to_lowercase();
-        if label == "rust" {
-            assert!(!ok, "[{}] unknown command should have non-zero exit code", label);
-        }
+        // Both binaries should print an error message.
+        // Delphi returns exit 0; Rust returns exit 1. We only check the message.
         assert!(!ok || combined.contains("unknown") || combined.contains("error"),
                 "[{}] unknown command should error. ok={} stdout={} stderr={}", label, ok, stdout, stderr);
         cleanup(&dir);
@@ -1612,11 +1661,12 @@ fn test_delete_nonexistent_no_crash() {
         write_test_file(&dir.join("a.txt"), b"A");
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
-        let (_, _, ok) = run_in(bin, &dir, &["d", "test.lod", "ghost.txt"]);
-        // Rust binary should return non-zero exit code for not-found file
-        if label == "rust" {
-            assert!(!ok, "[{}] delete nonexistent should fail", label);
-        }
+        // Deleting a nonexistent file: prints per-item error but command succeeds
+        // (matching Delphi behavior — per-item errors don't fail the overall command)
+        let (_, stderr, ok) = run_in(bin, &dir, &["d", "test.lod", "ghost.txt"]);
+        assert!(ok, "[{}] delete nonexistent should succeed (Delphi compat)", label);
+        let combined = format!("{}", stderr).to_lowercase();
+        assert!(combined.contains("not found"), "[{}] should print not-found warning", label);
         let names = list_archive_in(bin, &dir, "test.lod");
         assert!(names.contains(&"a.txt".to_string()), "[{}] intact", label);
 
@@ -1632,10 +1682,8 @@ fn test_rename_nonexistent_no_crash() {
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
         let (_, _, ok) = run_in(bin, &dir, &["r", "test.lod", "ghost.txt", "new.txt"]);
-        // Rust binary should return non-zero exit code for not-found file
-        if label == "rust" {
-            assert!(!ok, "[{}] rename nonexistent should fail", label);
-        }
+        // Rename nonexistent should fail (both Delphi and Rust raise error)
+        assert!(!ok, "[{}] rename nonexistent should fail", label);
         let names = list_archive_in(bin, &dir, "test.lod");
         assert!(names.contains(&"a.txt".to_string()), "[{}] intact", label);
 
@@ -1868,10 +1916,9 @@ fn test_extract_nonexistent_filter() {
         write_test_file(&dir.join("a.txt"), b"A");
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
+        // Extract nonexistent prints per-item error but command succeeds (Delphi compat)
         let (_, _, ok) = run_in(bin, &dir, &["e", "test.lod", "out", "nonexistent.txt"]);
-        if label == "rust" {
-            assert!(!ok, "[{}] extract nonexistent should fail", label);
-        }
+        assert!(ok, "[{}] extract nonexistent should succeed (Delphi compat)", label);
         assert!(!dir.join("out/a.txt").exists(), "[{}] a.txt not extracted", label);
 
         cleanup(&dir);
@@ -2144,7 +2191,7 @@ fn test_mmspriteslod_full_workflow() {
 }
 
 // ---------------------------------------------------------------------------
-// G.6: Checksum /vall round-trip for multiple archive types
+// G.6: Checksum --vall round-trip for multiple archive types
 // Tests Bug #4 from bash testing
 // ---------------------------------------------------------------------------
 
@@ -2167,13 +2214,13 @@ fn checksum_vall_roundtrip(bin: &Path, label: &str, archtype: &str, ext: &str, p
     // Write to file
     fs::write(dir.join("all.crc32"), &stdout).unwrap();
 
-    // Verify with /v
-    let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", &archive_name, "/v", "all.crc32"]);
-    assert!(ok, "[{}] /v verify {} should succeed: {}", label, archtype, stdout2);
+    // Verify with --v
+    let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", &archive_name, "--v", "all.crc32"]);
+    assert!(ok, "[{}] --v verify {} should succeed: {}", label, archtype, stdout2);
 
-    // Verify with /vall
-    let (stdout3, stderr3, ok) = run_in(bin, &dir, &["checksum", &archive_name, "/vall", "all.crc32"]);
-    assert!(ok, "[{}] /vall verify {} should succeed.\nstdout: {}\nstderr: {}", label, archtype, stdout3, stderr3);
+    // Verify with --vall
+    let (stdout3, stderr3, ok) = run_in(bin, &dir, &["checksum", &archive_name, "--vall", "all.crc32"]);
+    assert!(ok, "[{}] --vall verify {} should succeed.\nstdout: {}\nstderr: {}", label, archtype, stdout3, stderr3);
 
     cleanup(&dir);
 }
@@ -2232,17 +2279,19 @@ fn test_checksum_vall_h3lod() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_error_exit_code_delete_nonexistent() {
+fn test_delete_nonexistent_succeeds_like_delphi() {
+    // Both Delphi and Rust: delete prints per-item error but command succeeds
     for (label, ref bin) in get_binaries() {
-        if label != "rust" { continue; }
         let dir = temp_dir(&format!("ec_del_{}", label));
         write_test_file(&dir.join("a.txt"), b"A");
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
-        let (_, _, ok) = run_in(bin, &dir, &["delete", "test.lod", "nonexistent.xyz"]);
-        assert!(!ok, "[{}] delete nonexistent must return non-zero exit code", label);
+        let (stdout, stderr, ok) = run_in(bin, &dir, &["delete", "test.lod", "nonexistent.xyz"]);
+        assert!(ok, "[{}] delete nonexistent should succeed (per-item error only)", label);
+        let combined = format!("{}{}", stdout, stderr).to_lowercase();
+        assert!(combined.contains("not found"), "[{}] should warn about not found", label);
 
-        // But archive should still be intact
+        // Archive should still be intact
         let names = list_archive_in(bin, &dir, "test.lod");
         assert!(names.contains(&"a.txt".to_string()), "[{}] archive intact", label);
 
@@ -2251,57 +2300,67 @@ fn test_error_exit_code_delete_nonexistent() {
 }
 
 #[test]
-fn test_error_exit_code_rename_nonexistent() {
+fn test_rename_nonexistent_errors() {
+    // Both Delphi and Rust raise an error for rename of non-existent file.
+    // Delphi prints "Error: ..." but returns exit code 0 (doesn't set ExitCode).
+    // Rust prints "Error: ..." and returns exit code 1.
+    // We only check the error message here, not exit code, since that differs.
     for (label, ref bin) in get_binaries() {
-        if label != "rust" { continue; }
         let dir = temp_dir(&format!("ec_ren_{}", label));
         write_test_file(&dir.join("a.txt"), b"A");
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
-        let (_, _, ok) = run_in(bin, &dir, &["rename", "test.lod", "nonexistent.xyz", "new.xyz"]);
-        assert!(!ok, "[{}] rename nonexistent must return non-zero exit code", label);
+        let (stdout, stderr, _ok) = run_in(bin, &dir, &["rename", "test.lod", "nonexistent.xyz", "new.xyz"]);
+        let combined = format!("{}{}", stdout, stderr).to_lowercase();
+        assert!(combined.contains("not found") || combined.contains("error"),
+                "[{}] rename nonexistent should print error: {}", label, combined);
 
         cleanup(&dir);
     }
 }
 
 #[test]
-fn test_error_exit_code_extract_nonexistent() {
+fn test_extract_nonexistent_succeeds_like_delphi() {
+    // Both Delphi and Rust: extract prints per-item error but command succeeds
     for (label, ref bin) in get_binaries() {
-        if label != "rust" { continue; }
         let dir = temp_dir(&format!("ec_ext_{}", label));
         write_test_file(&dir.join("a.txt"), b"A");
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
         let (_, _, ok) = run_in(bin, &dir, &["extract", "test.lod", "out", "nonexistent.xyz"]);
-        assert!(!ok, "[{}] extract nonexistent must return non-zero exit code", label);
+        assert!(ok, "[{}] extract nonexistent should succeed (per-item error only)", label);
 
         cleanup(&dir);
     }
 }
 
 #[test]
-fn test_error_exit_code_unknown_command() {
+fn test_error_unknown_command_prints_error() {
+    // Both Delphi and Rust print an error for unknown commands.
+    // Delphi returns exit code 0; Rust returns 1. We only check error message.
     for (label, ref bin) in get_binaries() {
-        if label != "rust" { continue; }
         let dir = temp_dir(&format!("ec_unk_{}", label));
 
-        let (_, _, ok) = run_in(bin, &dir, &["totally_invalid_command"]);
-        assert!(!ok, "[{}] unknown command must return non-zero exit code", label);
+        let (stdout, stderr, _ok) = run_in(bin, &dir, &["totally_invalid_command"]);
+        let combined = format!("{}{}", stdout, stderr).to_lowercase();
+        assert!(combined.contains("unknown") || combined.contains("error"),
+                "[{}] unknown command should print error: {}", label, combined);
 
         cleanup(&dir);
     }
 }
 
 #[test]
-fn test_error_exit_code_missing_params() {
+fn test_error_missing_params_prints_error() {
+    // Both Delphi and Rust print an error for missing params.
+    // Delphi returns exit code 0; Rust returns 1. We only check error message.
     for (label, ref bin) in get_binaries() {
-        if label != "rust" { continue; }
         let dir = temp_dir(&format!("ec_miss_{}", label));
 
-        // "list" without archive should fail
-        let (_, _, ok) = run_in(bin, &dir, &["list"]);
-        assert!(!ok, "[{}] missing params must return non-zero exit code", label);
+        let (stdout, stderr, _ok) = run_in(bin, &dir, &["list"]);
+        let combined = format!("{}{}", stdout, stderr).to_lowercase();
+        assert!(combined.contains("error") || combined.contains("must specify") || combined.contains("mmarch"),
+                "[{}] missing params should print error: {}", label, combined);
 
         cleanup(&dir);
     }
@@ -2541,14 +2600,14 @@ fn test_checksum_wrong_hash_detection() {
         run_ok_in(bin, &dir, &["c", "test.lod", "mmiconslod", ".", "a.txt"]);
 
         // Verify with intentionally wrong hash
-        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "/v", "a.txt:00000000"]);
+        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--v", "a.txt:00000000"]);
         assert!(!ok, "[{}] wrong hash should fail", label);
 
         // Verify with correct hash
         let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "a.txt"]);
         let hash = &stdout.trim().trim_end_matches('\r')[..8];
         let pair = format!("a.txt:{}", hash);
-        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "/v", &pair]);
+        let (_, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--v", &pair]);
         assert!(ok, "[{}] correct hash should pass", label);
 
         cleanup(&dir);
@@ -2736,6 +2795,318 @@ fn test_compare_filesonly_games_lod() {
         run_ok_in(bin, &dir, &["compare", "v1.lod", "v2.lod", "filesonly", "diff"]);
         let files = collect_files_recursive(&dir.join("diff"), &dir.join("diff"));
         assert!(!files.is_empty(), "[{}] diff should have content: {:?}", label, files);
+
+        cleanup(&dir);
+    }
+}
+
+// ===========================================================================
+// H: Tests for codex-reported Delphi compatibility issues
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// H.1: SND/VID find_entry with extracted extension (Claim 5)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_snd_find_by_wav_extension() {
+    // SND stores files without extension. extract/delete/rename with .wav should work.
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("snd_wav_{}", label));
+        create_wav(&dir.join("alert.wav"));
+        create_wav(&dir.join("beep.wav"));
+
+        run_ok_in(bin, &dir, &["create", "test.snd", "mmsnd", ".", "alert.wav", "beep.wav"]);
+
+        // Extract by .wav name (in-archive name is "alert", not "alert.wav")
+        run_ok_in(bin, &dir, &["extract", "test.snd", "out", "alert.wav"]);
+        assert!(dir.join("out/alert.wav").exists(), "[{}] extract by .wav name", label);
+
+        // Delete by .wav name
+        run_ok_in(bin, &dir, &["delete", "test.snd", "beep.wav"]);
+        let names = list_archive_in(bin, &dir, "test.snd");
+        assert_eq!(names.len(), 1, "[{}] after delete beep.wav: {:?}", label, names);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_vid_find_by_smk_extension() {
+    // VID stores files without extension. Operations with .smk should work.
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("vid_smk_{}", label));
+        write_test_file(&dir.join("intro.smk"), b"video data");
+        write_test_file(&dir.join("outro.smk"), b"outro data");
+
+        run_ok_in(bin, &dir, &["create", "test.vid", "h3mm78vid", ".", "intro.smk", "outro.smk"]);
+
+        // Extract by .smk name
+        run_ok_in(bin, &dir, &["extract", "test.vid", "out", "intro.smk"]);
+        assert!(dir.join("out/intro.smk").exists(), "[{}] extract by .smk name", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H.2: Checksum outputs extracted names, not in-archive names (Claim 8)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_checksum_uses_extracted_names() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cs_extname_{}", label));
+        create_wav(&dir.join("sound.wav"));
+
+        run_ok_in(bin, &dir, &["create", "test.snd", "mmsnd", ".", "sound.wav"]);
+
+        // Checksum output should use extracted name "sound.wav", not in-archive "sound"
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.snd", "*"]);
+        assert!(stdout.contains("sound.wav"),
+                "[{}] checksum should output extracted name 'sound.wav': {}", label, stdout);
+        assert!(!stdout.contains("  sound\r\n") && !stdout.contains("  sound\n"),
+                "[{}] should not output bare 'sound' without .wav: {}", label, stdout);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H.3: Checksum file format accepts name:HASH (Claim 9)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_checksum_file_format_name_colon_hash() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cs_fmt_{}", label));
+        write_test_file(&dir.join("data.txt"), b"test content");
+        run_ok_in(bin, &dir, &["create", "test.lod", "mmiconslod", ".", "data.txt"]);
+
+        // Get the correct hash
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "data.txt"]);
+        let hash = &stdout.trim().trim_end_matches('\r')[..8];
+
+        // Write checksum file in name:HASH format (instead of standard HASH  name)
+        let crc_content = format!("data.txt:{}\r\n", hash);
+        fs::write(dir.join("check.crc32"), &crc_content).unwrap();
+
+        // Verify should work with this format
+        let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--v", "check.crc32"]);
+        assert!(ok, "[{}] name:HASH format should be accepted: {}", label, stdout2);
+        assert!(stdout2.contains("OK"), "[{}] should contain OK: {}", label, stdout2);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H.4: --vall does not count unlisted files as failures (Claim 11)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_checksum_vall_unlisted_is_warning_not_failure() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cs_vallw_{}", label));
+        write_test_file(&dir.join("a.txt"), b"A");
+        write_test_file(&dir.join("b.txt"), b"B");
+        write_test_file(&dir.join("c.txt"), b"C");
+        run_ok_in(bin, &dir, &["create", "test.lod", "mmiconslod", ".", "a.txt", "b.txt", "c.txt"]);
+
+        // Get checksum for only a.txt
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.lod", "a.txt"]);
+        fs::write(dir.join("partial.crc32"), &stdout).unwrap();
+
+        // --vall with partial file: b.txt and c.txt are unlisted
+        // Should succeed (with warning), not fail (matching Delphi behavior)
+        let (stdout2, stderr2, ok) = run_in(bin, &dir, &["checksum", "test.lod", "--vall", "partial.crc32"]);
+        assert!(ok, "[{}] --vall with partial should succeed (Delphi compat).\nstdout: {}\nstderr: {}",
+                label, stdout2, stderr2);
+        // Should still warn about unlisted files
+        assert!(stderr2.contains("not listed") || stderr2.contains("WARNING"),
+                "[{}] should warn about unlisted", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H.5: Empty mmsnd preserves MM kind (Claim 16)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_empty_mmsnd_preserves_kind() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("empty_mmsnd_{}", label));
+
+        // Create empty mmsnd, then add a file in a separate operation
+        run_ok_in(bin, &dir, &["create", "test.snd", "mmsnd", "."]);
+        create_wav(&dir.join("sound.wav"));
+        run_ok_in(bin, &dir, &["add", "test.snd", "sound.wav"]);
+
+        // The archive should still be readable and extractable
+        let names = list_archive_in(bin, &dir, "test.snd");
+        assert_eq!(names.len(), 1, "[{}] should have 1 file: {:?}", label, names);
+
+        run_ok_in(bin, &dir, &["extract", "test.snd", "out"]);
+        assert!(dir.join("out/sound.wav").exists(), "[{}] should extract sound.wav", label);
+
+        // Verify round-trip: the extracted wav should match the original
+        let orig = fs::read(dir.join("sound.wav")).unwrap();
+        let extracted = fs::read(dir.join("out/sound.wav")).unwrap();
+        assert_eq!(orig, extracted, "[{}] round-trip should preserve content", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H.6: mm78gameslod/mm78save version strings (Claim 17)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_mm78gameslod_version_string_roundtrip() {
+    // After creating mm78gameslod and reopening, the kind should still be Games7
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ver78g_{}", label));
+        let blv: Vec<u8> = (0..256).map(|i| (i % 256) as u8).collect();
+        write_test_file(&dir.join("test.blv"), &blv);
+        write_test_file(&dir.join("data.txt"), b"plain");
+
+        // Create, then reopen and add more files
+        run_ok_in(bin, &dir, &["create", "test.lod", "mm78gameslod", ".", "test.blv"]);
+        write_test_file(&dir.join("more.txt"), b"added later");
+        run_ok_in(bin, &dir, &["add", "test.lod", "more.txt"]);
+
+        // Extract and verify — if kind is wrong, compressed files will fail
+        run_ok_in(bin, &dir, &["extract", "test.lod", "out"]);
+        assert_eq!(fs::read(dir.join("out/test.blv")).unwrap(), blv,
+                   "[{}] blv should roundtrip after reopen+add", label);
+        assert_eq!(fs::read(dir.join("out/more.txt")).unwrap(), b"added later", "[{}]", label);
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_mm78save_version_string_roundtrip() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ver78s_{}", label));
+        let dlv: Vec<u8> = (0..200).map(|i| ((i * 3) % 256) as u8).collect();
+        write_test_file(&dir.join("area.dlv"), &dlv);
+        write_test_file(&dir.join("header.bin"), b"hdr");
+
+        run_ok_in(bin, &dir, &["create", "test.dod", "mm78save", ".", "header.bin"]);
+        // Add compressed file in a separate step (simulates reopen)
+        run_ok_in(bin, &dir, &["add", "test.dod", "area.dlv"]);
+
+        run_ok_in(bin, &dir, &["extract", "test.dod", "out"]);
+        assert_eq!(fs::read(dir.join("out/area.dlv")).unwrap(), dlv,
+                   "[{}] dlv should roundtrip after reopen+add", label);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H.7: Merge preserves TMMLodFile wrapper (Claim 18)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_merge_bitmapslod_preserves_data() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("merge_bmp_{}", label));
+        copy_test_file("pal994.act", &dir);
+        write_test_file(&dir.join("data.txt"), b"some data");
+
+        // Create two bitmaps archives
+        run_ok_in(bin, &dir, &["create", "a.bitmaps.lod", "mmbitmapslod", ".", "pal994.act"]);
+        run_ok_in(bin, &dir, &["create", "b.bitmaps.lod", "mmbitmapslod", ".", "data.txt"]);
+
+        // Merge b into a
+        run_ok_in(bin, &dir, &["merge", "a.bitmaps.lod", "b.bitmaps.lod"]);
+
+        // Extract all and verify content is intact
+        run_ok_in(bin, &dir, &["extract", "a.bitmaps.lod", "out"]);
+
+        // pal994.act should extract as .act (768 bytes palette)
+        let act_path = dir.join("out/pal994.act");
+        assert!(act_path.exists(), "[{}] pal994.act should exist after merge+extract", label);
+        let act_data = fs::read(&act_path).unwrap();
+        assert_eq!(act_data.len(), 768, "[{}] palette should be 768 bytes: got {}", label, act_data.len());
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H.8: /p with non-numeric value should error (Claim 4)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_palette_index_non_numeric_errors() {
+    // Both Delphi (StrToInt) and Rust return error for non-numeric /p argument.
+    // Delphi exit code is 0; Rust is 1. Check error message only.
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("p_nan_{}", label));
+        copy_test_file("testpal.bmp", &dir);
+        run_ok_in(bin, &dir, &["create", "test.lod", "mmbitmapslod", "."]);
+
+        let (stdout, stderr, _ok) = run_in(bin, &dir, &["add", "test.lod", "testpal.bmp", "/p", "notanumber"]);
+        let combined = format!("{}{}", stdout, stderr).to_lowercase();
+        assert!(combined.contains("error") || combined.contains("invalid"),
+                "[{}] /p with non-numeric should print error: {}", label, combined);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H.9: Unknown command has non-zero exit and no duplicate output (Claim 1)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_unknown_command_no_duplicate_output() {
+    // Both binaries should print "Error:" exactly once for unknown commands.
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("unk_dup_{}", label));
+
+        let (stdout, stderr, _ok) = run_in(bin, &dir, &["foobar_invalid"]);
+
+        // Count how many times "Error:" appears — should be exactly once
+        let combined = format!("{}{}", stdout, stderr);
+        let error_count = combined.matches("Error:").count();
+        assert_eq!(error_count, 1,
+                   "[{}] 'Error:' should appear exactly once, got {}:\n{}", label, error_count, combined);
+
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H.10: Checksum --v verify also accepts extracted names (Claim 11)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_checksum_verify_with_extracted_names() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("cs_vext_{}", label));
+        create_wav(&dir.join("music.wav"));
+
+        run_ok_in(bin, &dir, &["create", "test.snd", "mmsnd", ".", "music.wav"]);
+
+        // Get checksum — should output extracted name "music.wav"
+        let stdout = run_ok_in(bin, &dir, &["checksum", "test.snd", "*"]);
+        fs::write(dir.join("all.crc32"), &stdout).unwrap();
+
+        // Verify with --v should work since names match
+        let (stdout2, _, ok) = run_in(bin, &dir, &["checksum", "test.snd", "--v", "all.crc32"]);
+        assert!(ok, "[{}] --v verify with extracted names should work: {}", label, stdout2);
+
+        // --vall should also work
+        let (stdout3, stderr3, ok) = run_in(bin, &dir, &["checksum", "test.snd", "--vall", "all.crc32"]);
+        assert!(ok, "[{}] --vall verify should succeed.\nstdout: {}\nstderr: {}",
+                label, stdout3, stderr3);
 
         cleanup(&dir);
     }

@@ -927,9 +927,9 @@ fn kind_to_mm_strings(kind: ArchiveKind) -> (&'static str, &'static str) {
         ArchiveKind::LodIcons => ("MMVI", "icons"),
         ArchiveKind::LodSprites => ("MMVI", "sprites08"),
         ArchiveKind::LodMM8 => ("MMVIII", "bitmaps"),
-        ArchiveKind::LodGames7 => ("GameMMVI", "maps"),
+        ArchiveKind::LodGames7 => ("GameMMVII", "maps"),
         ArchiveKind::LodGames => ("GameMMVI", "maps"),
-        ArchiveKind::LodChapter7 => ("MMVI", "chapter"),
+        ArchiveKind::LodChapter7 => ("MMVII", "chapter"),
         ArchiveKind::LodChapter => ("MMVI", "chapter"),
         _ => ("MMVI", "bitmaps"),
     }

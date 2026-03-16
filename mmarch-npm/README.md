@@ -25,8 +25,8 @@ mmarch <a href="#diff-files-to-nsis-batch">diff-files-to-{nsis|batch}</a> &lt;OL
 mmarch <a href="#diff-add-keep"><strong>d</strong>iff-<strong>a</strong>dd-<strong>k</strong>eep</a> &lt;DIFF_FOLDER&gt;
 mmarch <a href="#checksum">check<strong>s</strong>um</a> &lt;ARCHIVE_FILE&gt;
 mmarch checksum &lt;ARCHIVE_FILE&gt; [FILE_1] [FILE_2] [...]
-mmarch checksum &lt;ARCHIVE_FILE&gt; /v[all] &lt;CRC32_FILE&gt;
-mmarch checksum &lt;ARCHIVE_FILE&gt; /v[all] &lt;name1:HASH1&gt; [name2:HASH2] [...]
+mmarch checksum &lt;ARCHIVE_FILE&gt; --v[all] &lt;CRC32_FILE&gt;
+mmarch checksum &lt;ARCHIVE_FILE&gt; --v[all] &lt;name1:HASH1&gt; [name2:HASH2] [...]
 mmarch <a href="#optimize"><strong>o</strong>ptimize</a> &lt;ARCHIVE_FILE&gt;
 mmarch <a href="#help"><strong>h</strong>elp</a>
 </pre>
@@ -333,23 +333,23 @@ mmarch checksum events.lod * > events.lod.crc32
 ### Verify CRC32
 
 ```
-mmarch checksum <ARCHIVE_FILE> /v <CRC32_FILE>
+mmarch checksum <ARCHIVE_FILE> --v <CRC32_FILE>
 ```
 
 Verify CRC32 of resource files listed in `CRC32_FILE`. Only the files listed in the checksum file are verified.
 
 ```
-mmarch checksum <ARCHIVE_FILE> /vall <CRC32_FILE>
+mmarch checksum <ARCHIVE_FILE> --vall <CRC32_FILE>
 ```
 
 Verify CRC32 of ALL resource files. Not only must every file listed in `CRC32_FILE` match, but the listed files must also be ALL the files in the archive (no unlisted files allowed).
 
 ```
-mmarch checksum <ARCHIVE_FILE> /v <name1:HASH1> [name2:HASH2] [...]
-mmarch checksum <ARCHIVE_FILE> /vall <name1:HASH1> [name2:HASH2] [...]
+mmarch checksum <ARCHIVE_FILE> --v <name1:HASH1> [name2:HASH2] [...]
+mmarch checksum <ARCHIVE_FILE> --vall <name1:HASH1> [name2:HASH2] [...]
 ```
 
-Inline verify mode (if the first argument after `/v` or `/vall` contains `:`). Instead of reading checksums from a file, specify them directly as `filename:CRC32HASH` pairs.
+Inline verify mode (if the first argument after `--v` or `--vall` contains `:`). Instead of reading checksums from a file, specify them directly as `filename:CRC32HASH` pairs.
 
 **Verify output:**
 
@@ -364,10 +364,10 @@ The exit code is non-zero if any verification fails.
 **Examples:**
 
 ```
-mmarch checksum events.lod /v events.lod.crc32
-mmarch checksum events.lod /vall wholefile.crc32
-mmarch checksum events.lod /v items.txt:A1B2C3D4 OUT04.EVT:E5F6A7B8
-mmarch checksum events.lod /vall items.txt:A1B2C3D4 OUT04.EVT:E5F6A7B8
+mmarch checksum events.lod --v events.lod.crc32
+mmarch checksum events.lod --vall wholefile.crc32
+mmarch checksum events.lod --v items.txt:A1B2C3D4 OUT04.EVT:E5F6A7B8
+mmarch checksum events.lod --vall items.txt:A1B2C3D4 OUT04.EVT:E5F6A7B8
 ```
 
 ## `optimize`

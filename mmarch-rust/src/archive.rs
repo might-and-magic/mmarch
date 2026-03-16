@@ -87,12 +87,10 @@ impl ArchiveKind {
         let ext = extracted_ext.to_lowercase();
         match self {
             ArchiveKind::LodHeroes => {
-                if ext == ".wav" || ext == ".bmp" {
-                    if ext == ".bmp" {
-                        Some(".pcx")
-                    } else {
-                        Some("") // no extension for wav in H3 snd
-                    }
+                if ext == ".bmp" {
+                    Some(".pcx")
+                } else if ext == ".wav" {
+                    Some("")
                 } else {
                     None
                 }
@@ -118,7 +116,21 @@ impl ArchiveKind {
                     None
                 }
             }
-            _ => None,
+            ArchiveKind::SndHeroes | ArchiveKind::SndMM => {
+                if ext == ".wav" {
+                    Some("")
+                } else {
+                    None
+                }
+            }
+            ArchiveKind::VidHeroes | ArchiveKind::VidMM6 => {
+                if ext == ".smk" {
+                    Some("")
+                } else {
+                    None
+                }
+            }
+            ArchiveKind::LodChapter | ArchiveKind::LodChapter7 => None,
         }
     }
 }
@@ -149,18 +161,125 @@ pub trait Archive {
                 return Some(i);
             }
         }
-        // Try with extension mapping
+        // Try with extension mapping (e.g., .bmp/.act -> extensionless, .wav -> extensionless)
         let ext = crate::path_utils::get_file_ext(name);
         if let Some(in_arch_ext) = self.kind().in_archive_ext(&ext) {
             let stem = &name[..name.len() - ext.len()];
             let mapped_name = format!("{}{}", stem, in_arch_ext);
             for (i, e) in entries.iter().enumerate() {
                 if e.name.eq_ignore_ascii_case(&mapped_name) {
-                    return Some(i);
+                    // Verify the extracted extension matches (for .bmp/.act disambiguation)
+                    if self.verify_extracted_ext(i, &ext) {
+                        return Some(i);
+                    }
                 }
             }
         }
         None
+    }
+
+    /// Check whether the entry at the given index, when extracted, would have
+    /// the given extension. Needed to distinguish .bmp from .act in bitmaps/icons LODs.
+    fn verify_extracted_ext(&self, index: usize, requested_ext: &str) -> bool {
+        let kind = self.kind();
+        let entry = &self.entries()[index];
+        let in_ext = crate::path_utils::get_file_ext(&entry.name);
+
+        match kind {
+            // For bitmaps/icons/MM8: extensionless entries are .act if 768 bytes (palette), .bmp otherwise
+            ArchiveKind::LodBitmaps | ArchiveKind::LodIcons | ArchiveKind::LodMM8 => {
+                if !in_ext.is_empty() {
+                    // Entry has an extension — extracted name keeps it
+                    return in_ext.eq_ignore_ascii_case(requested_ext);
+                }
+                // Extensionless entry: check data size to determine .bmp vs .act
+                // We read the data to check, but only if disambiguation is needed
+                let req = requested_ext.to_lowercase();
+                if req == ".act" {
+                    // .act = palette file = exactly 768 bytes extracted
+                    if let Ok(data) = self.read_entry_data(index) {
+                        data.len() == 768
+                    } else {
+                        false
+                    }
+                } else if req == ".bmp" {
+                    // .bmp = anything that's NOT 768 bytes
+                    if let Ok(data) = self.read_entry_data(index) {
+                        data.len() != 768
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            }
+            // For sprites: extensionless -> .bmp, no ambiguity
+            ArchiveKind::LodSprites => true,
+            // For SND: extensionless -> .wav, no ambiguity
+            ArchiveKind::SndHeroes | ArchiveKind::SndMM => true,
+            // For VID: extensionless -> .smk, no ambiguity
+            ArchiveKind::VidHeroes | ArchiveKind::VidMM6 => true,
+            // For H3 LOD: .pcx -> .bmp
+            ArchiveKind::LodHeroes => true,
+            // Default: accept
+            _ => true,
+        }
+    }
+
+    /// Get the extracted file name for an entry (with proper extension mapping).
+    fn get_extracted_name(&self, index: usize) -> String {
+        let entry = &self.entries()[index];
+        let kind = self.kind();
+        let in_name = &entry.name;
+        let in_ext = crate::path_utils::get_file_ext(in_name);
+
+        match kind {
+            ArchiveKind::SndHeroes | ArchiveKind::SndMM => {
+                if in_ext.is_empty() {
+                    format!("{}.wav", in_name)
+                } else {
+                    in_name.clone()
+                }
+            }
+            ArchiveKind::VidHeroes | ArchiveKind::VidMM6 => {
+                if in_ext.is_empty() {
+                    format!("{}.smk", in_name)
+                } else {
+                    in_name.clone()
+                }
+            }
+            ArchiveKind::LodHeroes => {
+                if in_ext.eq_ignore_ascii_case(".pcx") {
+                    let stem = crate::path_utils::get_file_stem(in_name);
+                    format!("{}.bmp", stem)
+                } else {
+                    in_name.clone()
+                }
+            }
+            ArchiveKind::LodBitmaps | ArchiveKind::LodIcons | ArchiveKind::LodMM8 => {
+                if in_ext.is_empty() {
+                    // Check if palette (768 bytes) -> .act, otherwise .bmp
+                    let is_palette = self.read_entry_data(index)
+                        .map(|d| d.len() == 768)
+                        .unwrap_or(false);
+                    if is_palette {
+                        format!("{}.act", in_name)
+                    } else {
+                        format!("{}.bmp", in_name)
+                    }
+                } else {
+                    in_name.clone()
+                }
+            }
+            ArchiveKind::LodSprites => {
+                if in_ext.is_empty() {
+                    format!("{}.bmp", in_name)
+                } else {
+                    in_name.clone()
+                }
+            }
+            _ => in_name.clone(),
+        }
     }
 
     fn list(&self, separator: &str) -> String {

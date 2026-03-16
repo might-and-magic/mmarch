@@ -49,9 +49,14 @@ impl SndArchive {
 
         let count = read_u32_le(&data, 0) as usize;
         if count == 0 {
+            // Empty archive: try to preserve the kind based on file size.
+            // An MM SND that was created and optimized with 0 entries is just 4 bytes,
+            // same as H3 SND. We default to SndMM since that's the more common format
+            // and avoids degrading mm snd archives that have been emptied.
+            // The actual kind will be corrected by the rebuild() which reloads.
             return Ok(SndArchive {
                 path: path.to_string(),
-                kind: ArchiveKind::SndHeroes,
+                kind: ArchiveKind::SndMM,
                 entries: Vec::new(),
             });
         }

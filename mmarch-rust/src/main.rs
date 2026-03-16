@@ -107,21 +107,19 @@ fn main() {
             help(false);
             Ok(())
         }
-        _ => {
-            eprintln!("Error: Unknown method: `{}`", method_str);
-            println!();
-            help(true);
-            Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Unknown method: `{}`", method_str),
-            ))
-        }
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Unknown method: `{}`", method_str),
+        )),
     };
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);
-        println!();
-        help(true);
+        // Only print help for parameter/usage errors (like Delphi MissingParamException)
+        if e.kind() == io::ErrorKind::InvalidInput {
+            println!();
+            help(true);
+        }
         std::process::exit(1);
     }
 }
@@ -204,7 +202,6 @@ fn cmd_extract(args: &[String]) -> io::Result<()> {
         if file_filter.is_empty() {
             extract_all(arch.as_archive(), &extract_to_base, "*");
         } else {
-            let mut not_found_count = 0u32;
             for i in 4..args.len() {
                 let fname = &args[i];
                 if fname.contains('*') {
@@ -217,15 +214,8 @@ fn cmd_extract(args: &[String]) -> io::Result<()> {
                             beautify_path(archive_file)
                         );
                         eprintln!("{}", e);
-                        not_found_count += 1;
                     }
                 }
-            }
-            if not_found_count > 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("{} file(s) not found in the archive", not_found_count),
-                ));
             }
         }
     }
@@ -383,8 +373,13 @@ fn add_proc(arch: &mut DynArchive, args: &[String], from: usize) -> io::Result<(
             } else {
                 // Check for /p PALETTE_INDEX
                 if i + 2 < args.len() && args[i + 1].eq_ignore_ascii_case("/p") {
-                    // Palette index specified - just add the file (palette support is a no-op in basic impl)
-                    let _palette_index: i32 = args[i + 2].parse().unwrap_or(0);
+                    // Palette index specified
+                    let _palette_index: i32 = args[i + 2].parse().map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("Invalid palette index: `{}`", args[i + 2]),
+                        )
+                    })?;
                     if let Err(e) = arch.add_file(file_path) {
                         eprintln!("File `{}` error: {}", beautify_path(file_path), e);
                     }
@@ -422,7 +417,6 @@ fn cmd_delete(args: &[String]) -> io::Result<()> {
         ));
     }
     let mut arch = DynArchive::load(archive_file)?;
-    let mut not_found_count = 0u32;
 
     for i in 3..args.len() {
         let fname = &args[i];
@@ -441,19 +435,12 @@ fn cmd_delete(args: &[String]) -> io::Result<()> {
                             beautify_path(fname),
                             fname
                         );
-                        not_found_count += 1;
                     }
                 }
             }
         }
     }
     arch.rebuild()?;
-    if not_found_count > 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("{} file(s) not found in the archive", not_found_count),
-        ));
-    }
     Ok(())
 }
 
@@ -467,7 +454,9 @@ fn delete_all(arch: &mut DynArchive, ext: &str) {
         } else if ext.is_empty() {
             entry_ext.is_empty()
         } else {
+            // Check both in-archive extension and extracted extension
             entry_ext.eq_ignore_ascii_case(ext)
+                || check_extracted_ext_match(arch.as_archive().kind(), &entry.name, ext)
         };
         if matches {
             to_remove.push(i);
@@ -561,10 +550,22 @@ fn cmd_merge(args: &[String]) -> io::Result<()> {
     let mut arch1 = DynArchive::load(archive_file)?;
     let arch2 = DynArchive::load(&archive_file2)?;
 
-    // For each file in archive2, add/replace in archive1
+    // For each file in archive2, add/replace in archive1.
+    // Always read raw bytes from source to preserve format-specific wrappers
+    // (e.g., TMMLodFile headers for bitmaps/icons/MM8 LODs).
     let entries2 = arch2.as_archive().entries().to_vec();
     for (i, entry) in entries2.iter().enumerate() {
         let data = arch2.as_archive().read_entry_data(i)?;
+
+        // Read raw stored bytes from source archive
+        let raw_data = {
+            use std::io::{Read, Seek, SeekFrom};
+            let mut f = std::fs::File::open(arch2.as_archive().file_path())?;
+            f.seek(SeekFrom::Start(entry.offset))?;
+            let mut buf = vec![0u8; entry.size as usize];
+            f.read_exact(&mut buf)?;
+            buf
+        };
 
         // Remove existing with same name
         if let Some(idx) = arch1.as_archive().find_entry(&entry.name) {
@@ -576,17 +577,7 @@ fn cmd_merge(args: &[String]) -> io::Result<()> {
             offset: 0,
             size: entry.size,
             unpacked_size: entry.unpacked_size,
-            data: Some(if entry.is_packed() {
-                // Store the raw (packed) data
-                let mut f = std::fs::File::open(arch2.as_archive().file_path())?;
-                use std::io::{Read, Seek, SeekFrom};
-                f.seek(SeekFrom::Start(entry.offset))?;
-                let mut buf = vec![0u8; entry.size as usize];
-                f.read_exact(&mut buf)?;
-                buf
-            } else {
-                data.clone()
-            }),
+            data: Some(raw_data),
             original_data: Some(data),
         });
     }
@@ -772,9 +763,13 @@ fn cmd_checksum(args: &[String]) -> io::Result<()> {
     let archive_file = &args[2];
     let arg3 = get_arg(args, 3);
 
-    // Check for verify mode: /v or /vall
-    if arg3.eq_ignore_ascii_case("/v") || arg3.eq_ignore_ascii_case("/vall") {
-        let verify_all = arg3.eq_ignore_ascii_case("/vall");
+    // Check for verify mode: accept -v, --v, -vall, --vall
+    // Must start with at least one '-' to be a flag (bare "v" is a filename)
+    let is_flag = arg3.starts_with('-');
+    let arg3_flag = arg3.trim_start_matches('-').to_lowercase();
+
+    if is_flag && (arg3_flag == "v" || arg3_flag == "vall") {
+        let verify_all = arg3_flag == "vall";
         let remaining: Vec<String> = args[4..].to_vec();
         if remaining.is_empty() {
             return Err(io::Error::new(
@@ -817,12 +812,35 @@ fn cmd_checksum(args: &[String]) -> io::Result<()> {
         return Ok(());
     }
 
-    // CRC32 of resources
-    let filters: Vec<String> = args[3..].to_vec();
+    // CRC32 of resources — match Delphi behavior:
+    // If param3 is * or *.*, all resources.
+    // If param3 contains *, wildcard mode using only param3.
+    // Otherwise, iterate all params from 3 onward as specific filenames.
     let arch = DynArchive::load(archive_file)?;
-    let results = checksum::checksum_resources(arch.as_archive(), &filters)?;
-    for (name, crc) in &results {
-        print!("{}", checksum::format_checksum_line(name, *crc));
+    if arg3 == "*" || arg3 == "*.*" {
+        let filters = vec!["*".to_string()];
+        let results = checksum::checksum_resources(arch.as_archive(), &filters)?;
+        for (name, crc) in &results {
+            print!("{}", checksum::format_checksum_line(name, *crc));
+        }
+    } else if arg3.contains('*') {
+        let filters = vec![arg3.clone()];
+        let results = checksum::checksum_resources(arch.as_archive(), &filters)?;
+        for (name, crc) in &results {
+            print!("{}", checksum::format_checksum_line(name, *crc));
+        }
+    } else {
+        // Specific files, one at a time
+        for i in 3..args.len() {
+            let fname = &args[i];
+            if !fname.is_empty() {
+                let filters = vec![fname.clone()];
+                let results = checksum::checksum_resources(arch.as_archive(), &filters)?;
+                for (name, crc) in &results {
+                    print!("{}", checksum::format_checksum_line(name, *crc));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -848,8 +866,8 @@ fn help(short: bool) {
     println!("mmarch diff-add-keep <DIFF_FOLDER>");
     println!("mmarch checksum <ARCHIVE_FILE>");
     println!("mmarch checksum <ARCHIVE_FILE> [FILE_1] [FILE_2] [...]");
-    println!("mmarch checksum <ARCHIVE_FILE> /v[all] <CRC32_FILE>");
-    println!("mmarch checksum <ARCHIVE_FILE> /v[all] <name1:HASH1> [name2:HASH2] [...]");
+    println!("mmarch checksum <ARCHIVE_FILE> --v[all] <CRC32_FILE>");
+    println!("mmarch checksum <ARCHIVE_FILE> --v[all] <name1:HASH1> [name2:HASH2] [...]");
     println!("mmarch optimize <ARCHIVE_FILE>");
     println!("mmarch help");
 

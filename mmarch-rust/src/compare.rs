@@ -669,7 +669,7 @@ fn compare_archive_files(
                 for d in &deleted {
                     result_deleted_res.push(format!("{}{}{}", name, ARCH_RES_SEPARATOR, d));
                 }
-                if !added.is_empty() || !modified.is_empty() {
+                if !added.is_empty() && !modified.is_empty() {
                     result_modified_archives.push(format!("{}{}", name, ARCH_RES_SEPARATOR));
                 }
             }

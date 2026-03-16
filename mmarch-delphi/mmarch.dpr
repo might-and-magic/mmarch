@@ -103,8 +103,8 @@ begin
 	WriteLn('mmarch diff-add-keep <' + HELPPRM_DIFF_FOLDER + '>');
     WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '>');
     WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> [FILE_1] [FILE_2] [...]');
-    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> /v[all] <CRC32_FILE>');
-    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> /v[all] <name1:HASH1> [name2:HASH2] [...]');
+    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> --v[all] <CRC32_FILE>');
+    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> --v[all] <name1:HASH1> [name2:HASH2] [...]');
 	WriteLn('mmarch optimize <' + HELPPRM_ARCHIVE_FILE + '>');
 	WriteLn('mmarch help');
 
@@ -549,9 +549,10 @@ var
 begin
 	param3 := ParamStr(3);
 
-	// Determine mode
-	isVerify := SameText(param3, '/v');
-	isVerifyAll := SameText(param3, '/vall');
+	// Accept -v, --v, -vall, --vall as verify flags.
+	// Must start with '-' (bare "v" or "vall" could be a resource filename).
+	isVerify := (Length(param3) > 0) and (param3[1] = '-') and SameText(trimCharLeft(param3, '-'), 'v');
+	isVerifyAll := (Length(param3) > 0) and (param3[1] = '-') and SameText(trimCharLeft(param3, '-'), 'vall');
 
 	if isVerify or isVerifyAll then
 	begin
@@ -563,7 +564,7 @@ begin
 		archSimp := MMArchSimple.load(archiveFile);
 		fFiles := archSimp.getTRSMMArchive.RawFiles;
 
-		// Determine if inline (first arg after /v contains ':')
+		// Determine if inline (first arg after --v contains ':')
 		isInline := (Pos(':', param4) > 0);
 
 		verifyPairs := TStringList.Create;
@@ -632,7 +633,7 @@ begin
 				end;
 			end;
 
-			// /vall: check for files in archive not listed
+			// --vall: check for files in archive not listed
 			if isVerifyAll then
 			begin
 				archFileNames := TStringList.Create;

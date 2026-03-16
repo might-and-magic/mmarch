@@ -44,6 +44,7 @@ pub fn checksum_file(path: &str) -> io::Result<u32> {
 
 /// CRC32 of resources inside an archive matching the given filter.
 /// filter: "*" = all, ".ext" = extension, "" = no extension, or specific name.
+/// Output uses extracted names (with proper extension mapping).
 pub fn checksum_resources(
     archive: &dyn Archive,
     filters: &[String],
@@ -52,17 +53,19 @@ pub fn checksum_resources(
     let mut results = Vec::new();
 
     for i in 0..entries.len() {
-        let name = &entries[i].name;
-        if matches_any_filter(name, filters) {
+        let extracted_name = archive.get_extracted_name(i);
+        if matches_any_filter(&entries[i].name, &extracted_name, filters) {
             let data = archive.read_entry_data(i)?;
-            results.push((name.clone(), crc32(&data)));
+            results.push((extracted_name, crc32(&data)));
         }
     }
 
     Ok(results)
 }
 
-fn matches_any_filter(name: &str, filters: &[String]) -> bool {
+/// Check if an entry matches any of the given filters.
+/// Checks both the in-archive name and the extracted name.
+fn matches_any_filter(in_archive_name: &str, extracted_name: &str, filters: &[String]) -> bool {
     for filter in filters {
         if filter == "*" || filter == "*.*" {
             return true;
@@ -73,16 +76,22 @@ fn matches_any_filter(name: &str, filters: &[String]) -> bool {
                 return true;
             }
             if ext.is_empty() {
-                if get_file_ext(name).is_empty() {
+                if get_file_ext(in_archive_name).is_empty() || get_file_ext(extracted_name).is_empty() {
                     return true;
                 }
             } else {
-                if get_file_ext(name).eq_ignore_ascii_case(&ext) {
+                // Check both in-archive and extracted extension
+                if get_file_ext(in_archive_name).eq_ignore_ascii_case(&ext)
+                    || get_file_ext(extracted_name).eq_ignore_ascii_case(&ext)
+                {
                     return true;
                 }
             }
         } else {
-            if name.eq_ignore_ascii_case(filter) {
+            // Specific name: check both in-archive and extracted name
+            if in_archive_name.eq_ignore_ascii_case(filter)
+                || extracted_name.eq_ignore_ascii_case(filter)
+            {
                 return true;
             }
         }
@@ -90,7 +99,7 @@ fn matches_any_filter(name: &str, filters: &[String]) -> bool {
     false
 }
 
-/// Parse a checksum file. Each line: "HEXHASH  filename"
+/// Parse a checksum file. Accepts both "HEXHASH  filename" and "filename:HEXHASH" formats.
 pub fn parse_checksum_file(content: &str) -> Vec<(String, u32)> {
     let mut pairs = Vec::new();
     for line in content.lines() {
@@ -98,9 +107,19 @@ pub fn parse_checksum_file(content: &str) -> Vec<(String, u32)> {
         if line.is_empty() {
             continue;
         }
-        if let Some(pos) = line.find("  ") {
-            let hash_str = &line[..pos];
-            let name = &line[pos + 2..];
+        // Try "HEXHASH  filename" format first (8 hex chars + 2 spaces)
+        if line.len() > 10 && &line[8..10] == "  " {
+            let hash_str = &line[..8];
+            let name = &line[10..];
+            if let Ok(hash) = u32::from_str_radix(hash_str, 16) {
+                pairs.push((name.to_string(), hash));
+                continue;
+            }
+        }
+        // Try "name:HASH" format
+        if let Some(pos) = line.find(':') {
+            let name = &line[..pos];
+            let hash_str = &line[pos + 1..];
             if let Ok(hash) = u32::from_str_radix(hash_str, 16) {
                 pairs.push((name.to_string(), hash));
             }
@@ -160,11 +179,15 @@ pub fn verify_checksums(
     }
 
     if verify_all {
-        // Check for files in archive not listed
+        // Check for files in archive not listed — warn but don't count as failures
+        // (matching Delphi behavior: also check extracted names)
         let listed: Vec<String> = pairs.iter().map(|(n, _)| n.to_lowercase()).collect();
         let mut unlisted = 0u32;
-        for entry in entries {
-            if !listed.iter().any(|n| n.eq_ignore_ascii_case(&entry.name)) {
+        for (i, entry) in entries.iter().enumerate() {
+            let in_name_lower = entry.name.to_lowercase();
+            let ext_name = archive.get_extracted_name(i);
+            let ext_name_lower = ext_name.to_lowercase();
+            if !listed.iter().any(|n| *n == in_name_lower || *n == ext_name_lower) {
                 unlisted += 1;
             }
         }
@@ -173,7 +196,7 @@ pub fn verify_checksums(
                 "WARNING: {} files in archive not listed in checksum",
                 unlisted
             );
-            failures += unlisted;
+            // Note: Delphi does NOT count unlisted as failures, only warns
         }
     }
 
