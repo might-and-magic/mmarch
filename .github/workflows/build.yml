@@ -44,7 +44,7 @@ jobs:
             target: i686-unknown-linux-musl
             artifact: mmarch-linux-ia32
           - name: darwin-x64
-            os: macos-13
+            os: macos-14
             target: x86_64-apple-darwin
             artifact: mmarch-darwin-x64
           - name: darwin-arm64
