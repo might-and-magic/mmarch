@@ -6,6 +6,7 @@
 *.zip
 *.7z
 !fixedsprites.zip
+!mmarch-rust/tests/**/*.lod
 
 # Mac
 .DS_Store
