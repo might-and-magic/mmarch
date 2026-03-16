@@ -35,7 +35,7 @@ mmarch <a href="#help"><strong>h</strong>elp</a>
 
 For the first argument, use <code><strong>k</strong></code> for <code>compare</code>, <code><strong>s</strong></code> for <code>checksum</code>, <code><strong>df2n</strong></code> for <code>diff-files-to-nsis</code>, <code><strong>df2b</strong></code> for <code>diff-files-to-batch</code>, <code><strong>dak</strong></code> for <code>diff-add-keep</code>, otherwise, use the initial letter as a shortcut.
 
-* Usage Notes: | [`FOLDER`](#notes-on-folder) | [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) | [Batch archive extraction](#batch-archive-extraction) | [Palette](#add-file-with-palette) arguments | [Other notes](#other-tips-and-notes)
+* Usage Notes: | [`FOLDER`](#notes-on-folder) | [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) | [Batch archive extraction](#batch-archive-extraction) | [Palette](#add-file-with-palette) arguments | [`--ec` exit code mode](#exit-code-mode---ec) | [Other notes](#other-tips-and-notes)
 * For developer: | [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files) | [Development](#development) | [Change Log](#change-log)
 
 [Real-world example and tutorial: How to make a .exe MMMerge Update Patch](tutorial)
@@ -493,6 +493,35 @@ The tool changes or overrides original archive or unpacked resource files perman
 ### File will be skipped if it fails
 
 If the program encounters an error when extracting, adding or deleting a resource file from archive file(s), this resource file will be skipped and the rest will still be processed.
+
+### Exit code mode (`--ec`)
+
+You can control exit code behavior with the `--ec` flag, placed anywhere in the command:
+
+```
+mmarch --ec {strict|normal|loose} <COMMAND> [ARGS...]
+```
+
+| Scenario | `strict` | `normal` (default) | `loose` |
+|----------|:--------:|:------------------:|:-------:|
+| Unknown command | 1 | 1 | 0 |
+| Missing parameters | 1 | 1 | 0 |
+| Rename: file not found | 1 | 1 | 0 |
+| Open non-existent archive | 1 | 1 | 0 |
+| Delete: per-item not found | 1 | 0 | 0 |
+| Extract: per-item not found | 1 | 0 | 0 |
+| Checksum verify failure | 1 | 1 | 1 |
+
+- **`strict`**: all errors cause a non-zero exit code
+- **`normal`** (default): per-item not-found in `delete`/`extract` is non-fatal (only prints a warning), other errors cause non-zero exit code
+- **`loose`**: only checksum verification failure causes a non-zero exit code
+
+**Examples:**
+
+```
+mmarch --ec strict delete events.lod nonexistent.txt
+mmarch --ec loose rename events.lod old.txt new.txt
+```
 
 ### In-archive and extracted extension difference
 

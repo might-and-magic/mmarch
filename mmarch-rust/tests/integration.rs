@@ -3111,3 +3111,295 @@ fn test_checksum_verify_with_extracted_names() {
         cleanup(&dir);
     }
 }
+
+// ===========================================================================
+// I: --ec flag tests (exit code mode: strict / normal / loose)
+// ===========================================================================
+
+/// Helper: create a test archive with a.txt, b.txt
+fn setup_ec_archive(bin: &Path, dir: &Path) {
+    write_test_file(&dir.join("a.txt"), b"A");
+    write_test_file(&dir.join("b.txt"), b"B");
+    run_ok_in(bin, dir, &["create", "test.lod", "mmiconslod", ".", "a.txt", "b.txt"]);
+}
+
+// ---------------------------------------------------------------------------
+// I.1: Unknown command
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ec_unknown_command_strict() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_unk_s_{}", label));
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "strict", "nonexistent_cmd"]);
+        assert!(!ok, "[{}] strict: unknown command should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_unknown_command_normal() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_unk_n_{}", label));
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "normal", "nonexistent_cmd"]);
+        assert!(!ok, "[{}] normal: unknown command should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_unknown_command_loose() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_unk_l_{}", label));
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "loose", "nonexistent_cmd"]);
+        assert!(ok, "[{}] loose: unknown command should exit 0", label);
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// I.2: Missing params
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ec_missing_params_strict() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_miss_s_{}", label));
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "strict", "list"]);
+        assert!(!ok, "[{}] strict: missing params should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_missing_params_normal() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_miss_n_{}", label));
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "normal", "list"]);
+        assert!(!ok, "[{}] normal: missing params should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_missing_params_loose() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_miss_l_{}", label));
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "loose", "list"]);
+        assert!(ok, "[{}] loose: missing params should exit 0", label);
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// I.3: Rename not found
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ec_rename_notfound_strict() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_ren_s_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "strict", "rename", "test.lod", "ghost.txt", "new.txt"]);
+        assert!(!ok, "[{}] strict: rename not found should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_rename_notfound_normal() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_ren_n_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "normal", "rename", "test.lod", "ghost.txt", "new.txt"]);
+        assert!(!ok, "[{}] normal: rename not found should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_rename_notfound_loose() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_ren_l_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "loose", "rename", "test.lod", "ghost.txt", "new.txt"]);
+        assert!(ok, "[{}] loose: rename not found should exit 0", label);
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// I.4: Open non-existent archive
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ec_open_nonexistent_strict() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_open_s_{}", label));
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "strict", "list", "nonexistent.lod"]);
+        assert!(!ok, "[{}] strict: open nonexistent should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_open_nonexistent_normal() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_open_n_{}", label));
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "normal", "list", "nonexistent.lod"]);
+        assert!(!ok, "[{}] normal: open nonexistent should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_open_nonexistent_loose() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_open_l_{}", label));
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "loose", "list", "nonexistent.lod"]);
+        assert!(ok, "[{}] loose: open nonexistent should exit 0", label);
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// I.5: Delete per-item not found
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ec_delete_notfound_strict() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_del_s_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "strict", "delete", "test.lod", "ghost.txt"]);
+        assert!(!ok, "[{}] strict: delete not found should exit 1", label);
+        // Archive should still be rebuilt (existing files intact)
+        let names = list_archive_in(bin, &dir, "test.lod");
+        assert!(names.contains(&"a.txt".to_string()), "[{}] intact", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_delete_notfound_normal() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_del_n_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "normal", "delete", "test.lod", "ghost.txt"]);
+        assert!(ok, "[{}] normal: delete not found should exit 0", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_delete_notfound_loose() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_del_l_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "loose", "delete", "test.lod", "ghost.txt"]);
+        assert!(ok, "[{}] loose: delete not found should exit 0", label);
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// I.6: Extract per-item not found
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ec_extract_notfound_strict() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_ext_s_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "strict", "extract", "test.lod", "out", "ghost.txt"]);
+        assert!(!ok, "[{}] strict: extract not found should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_extract_notfound_normal() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_ext_n_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "normal", "extract", "test.lod", "out", "ghost.txt"]);
+        assert!(ok, "[{}] normal: extract not found should exit 0", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_extract_notfound_loose() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_ext_l_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "loose", "extract", "test.lod", "out", "ghost.txt"]);
+        assert!(ok, "[{}] loose: extract not found should exit 0", label);
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// I.7: Checksum verify failure
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ec_checksum_fail_strict() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_cs_s_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "strict", "checksum", "test.lod", "--v", "a.txt:00000000"]);
+        assert!(!ok, "[{}] strict: checksum fail should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_checksum_fail_normal() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_cs_n_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "normal", "checksum", "test.lod", "--v", "a.txt:00000000"]);
+        assert!(!ok, "[{}] normal: checksum fail should exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_checksum_fail_loose() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_cs_l_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["--ec", "loose", "checksum", "test.lod", "--v", "a.txt:00000000"]);
+        assert!(!ok, "[{}] loose: checksum fail should STILL exit 1", label);
+        cleanup(&dir);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// I.8: --ec flag position and default
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ec_default_is_normal() {
+    // Without --ec flag, behavior should be normal (delete not-found = exit 0)
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_def_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["delete", "test.lod", "ghost.txt"]);
+        assert!(ok, "[{}] default (no --ec): delete not found should exit 0", label);
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn test_ec_flag_at_end() {
+    // --ec can appear anywhere in args
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("ec_end_{}", label));
+        setup_ec_archive(bin, &dir);
+        let (_, _, ok) = run_in(bin, &dir, &["delete", "test.lod", "ghost.txt", "--ec", "strict"]);
+        assert!(!ok, "[{}] --ec at end should work", label);
+        cleanup(&dir);
+    }
+}

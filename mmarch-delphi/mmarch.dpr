@@ -18,14 +18,19 @@ uses
 
 type
 	MissingParamException = class(Exception);
+	ItemNotFoundException = class(Exception); // per-item not-found in delete/extract
 
 const
 	MMARCHVERSION: string = '4.0.0';
 	MMARCHURL: string = 'https://github.com/might-and-magic/mmarch';
 
+type
+	TEcMode = (ecStrict, ecNormal, ecLoose);
+
 var
 	method, archiveFile: string;
 	methodNumber: integer;
+	ecMode: TEcMode = ecNormal;
 
 
 resourcestring
@@ -85,6 +90,59 @@ resourcestring
 	HELPPRM_FILE_TO_XX_X             = 'FILE_TO_XX_?';
 
 
+var
+	// Cleaned args (with --ec stripped). Index 0 = program name.
+	cleanArgs: array of string;
+	cleanArgCount: integer;
+
+function CleanParamStr(index: integer): string;
+begin
+	if (index >= 0) and (index < cleanArgCount) then
+		Result := cleanArgs[index]
+	else
+		Result := '';
+end;
+
+function CleanParamCount: integer;
+begin
+	Result := cleanArgCount - 1; // exclude program name
+end;
+
+procedure ParseEcFlag;
+var
+	i: integer;
+	normalized, modeStr: string;
+begin
+	SetLength(cleanArgs, ParamCount + 1);
+	cleanArgCount := 0;
+	i := 0;
+	while i <= ParamCount do
+	begin
+		if i > 0 then
+		begin
+			normalized := AnsiLowerCase(trimCharLeft(ParamStr(i), '-'));
+			if (normalized = 'ec') and (i + 1 <= ParamCount) then
+			begin
+				modeStr := AnsiLowerCase(ParamStr(i + 1));
+				if modeStr = 'strict' then
+					ecMode := ecStrict
+				else if modeStr = 'normal' then
+					ecMode := ecNormal
+				else if modeStr = 'loose' then
+					ecMode := ecLoose
+				else
+					WriteLn('Warning: unknown --ec mode ''' + ParamStr(i + 1) + ''', using ''normal''');
+				i := i + 2;
+				Continue;
+			end;
+		end;
+		cleanArgs[cleanArgCount] := ParamStr(i);
+		Inc(cleanArgCount);
+		Inc(i);
+	end;
+	SetLength(cleanArgs, cleanArgCount);
+end;
+
 procedure help(short: boolean = false);
 begin
 	WriteLn(format(HELPSTR_FirstLine, [MMARCHVERSION]));
@@ -107,6 +165,8 @@ begin
     WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> --v[all] <name1:HASH1> [name2:HASH2] [...]');
 	WriteLn('mmarch optimize <' + HELPPRM_ARCHIVE_FILE + '>');
 	WriteLn('mmarch help');
+	WriteLn;
+	WriteLn('Global option: --ec {strict|normal|loose}  (default: normal)');
 
 	if not short then
 	begin
@@ -144,14 +204,15 @@ procedure extract;
 var
 	archSimp: MMArchSimple;
 	extractToBaseFolder, extractToFolder, archiveFileFolder, fileName: string;
-	i, j: integer;
+	i, j, notFoundCount: integer;
 	archiveFileList: TStringList; // archive file name - archive file path pair
 begin
 
-	extractToBaseFolder := ParamStr(3);
+	extractToBaseFolder := CleanParamStr(3);
 	if extractToBaseFolder = '' then
 		raise MissingParamException.Create(NeedFolder);
 	extractToFolder := extractToBaseFolder;
+	notFoundCount := 0;
 
 	if Pos('*', archiveFile) > 0 then
 		archiveFileList := wildcardArchiveNameToArchiveList(archiveFile)
@@ -170,7 +231,7 @@ begin
 
 			archiveFileFolder := archiveFileList.ValueFromIndex[j];
 			archSimp := MMArchSimple.load(withTrailingSlash(archiveFileFolder) + archiveFileList.Names[j]);
-			fileName := ParamStr(4);
+			fileName := CleanParamStr(4);
 
 			if Pos('*', archiveFile) > 0 then
 				extractToFolder := withTrailingSlash(extractToBaseFolder)
@@ -180,9 +241,9 @@ begin
 			if fileName = '' then // FILE_TO_EXTRACT_1 is empty, extract all
 				archSimp.extractAll(extractToFolder);
 
-			for i := 4 to ParamCount do
+			for i := 4 to CleanParamCount do
 			begin
-				fileName := ParamStr(i);
+				fileName := CleanParamStr(i);
 				if fileName <> '' then
 				begin
 					if Pos('*', fileName) > 0 then
@@ -197,6 +258,7 @@ begin
 								WriteLn(format(FileInArchiveErrorStr, [beautifyPath(fileName),
 										beautifyPath(withTrailingSlash(archiveFileFolder) + archiveFileList.Names[j])]));
 								WriteLn(E.Message);
+								Inc(notFoundCount);
 							end;
 						end;
 					end;
@@ -215,6 +277,8 @@ begin
 	end;
 
 	archiveFileList.Free;
+	if (notFoundCount > 0) and (ecMode = ecStrict) then
+		raise ItemNotFoundException.Create(IntToStr(notFoundCount) + ' file(s) not found in the archive');
 
 end;
 
@@ -224,7 +288,7 @@ var
 	archSimp: MMArchSimple;
 	separator: string;
 begin
-	separator := ParamStr(3);
+	separator := CleanParamStr(3);
 	if separator = '' then
 		separator := #13#10;
 
@@ -240,9 +304,9 @@ var
 	i, paletteIndex: integer;
 begin
 	i := paramIndexFrom;
-	while i <= ParamCount do
+	while i <= CleanParamCount do
 	begin
-		filePath := ParamStr(i);
+		filePath := CleanParamStr(i);
 		if filePath <> '' then // has file to add
 		begin
 			folder := ExtractFilePath(filePath);
@@ -253,9 +317,9 @@ begin
 				archSimp.addAll(folder, wildcardFileNameToExt(fileName))
 			else
 			begin
-				if (i <= ParamCount - 2) and (SameText(ParamStr(i + 1), '/p')) then // pal specified
+				if (i <= CleanParamCount - 2) and (SameText(CleanParamStr(i + 1), '/p')) then // pal specified
 				begin
-					paletteIndex := strtoint(ParamStr(i + 2));
+					paletteIndex := strtoint(CleanParamStr(i + 2));
 
 					try // the individual resource file will be skipped if it gets an exception
 						archSimp.add(filePath, paletteIndex, false);
@@ -288,7 +352,7 @@ var
 	filePath: string;
 	archSimp: MMArchSimple;
 begin
-	filePath := ParamStr(3);
+	filePath := CleanParamStr(3);
 	if filePath = '' then
 		raise MissingParamException.Create(NeedFileToAdd);
 	archSimp := MMArchSimple.load(archiveFile);
@@ -300,16 +364,17 @@ procedure delete;
 var
 	fileName: string;
 	archSimp: MMArchSimple;
-	i: integer;
+	i, notFoundCount: integer;
 begin
-	fileName := ParamStr(3);
+	fileName := CleanParamStr(3);
 	if fileName = '' then
 		raise MissingParamException.Create(NeedFileToDelete);
 	archSimp := MMArchSimple.load(archiveFile);
+	notFoundCount := 0;
 
-	for i := 3 to ParamCount do
+	for i := 3 to CleanParamCount do
 	begin
-		fileName := ParamStr(i);
+		fileName := CleanParamStr(i);
 		if fileName <> '' then
 		begin
 			if Pos('*', fileName) > 0 then
@@ -320,12 +385,17 @@ begin
 					archSimp.delete(fileName, false);
 				except
 					on E: Exception do
+					begin
 						WriteLn(format(FileErrorStr, [beautifyPath(fileName), E.Message]));
+						Inc(notFoundCount);
+					end;
 				end;
 			end;
 		end;
 	end;
 	archSimp.optimize;
+	if (notFoundCount > 0) and (ecMode = ecStrict) then
+		raise ItemNotFoundException.Create(IntToStr(notFoundCount) + ' file(s) not found in the archive');
 end;
 
 
@@ -334,8 +404,8 @@ var
 	oldFileName, newFileName: string;
 	archSimp: MMArchSimple;
 begin
-	oldFileName := ParamStr(3);
-	newFileName := ParamStr(4);
+	oldFileName := CleanParamStr(3);
+	newFileName := CleanParamStr(4);
 	if (oldFileName = '') or (newFileName = '') then
 		raise MissingParamException.Create(NeedFilesToRename);
 	archSimp := MMArchSimple.load(archiveFile);
@@ -348,8 +418,8 @@ var
 	archiveFileType, folder: string;
 	archSimp: MMArchSimple;
 begin
-	archiveFileType := ParamStr(3);
-	folder := ParamStr(4);
+	archiveFileType := CleanParamStr(3);
+	folder := CleanParamStr(4);
 	if (archiveFileType = '') or (folder = '') then
 		raise MissingParamException.Create(NeedArchiveFileTypeAndFolder);
 
@@ -364,7 +434,7 @@ var
 	archSimp: MMArchSimple;
 	archiveFile2: string;
 begin
-	archiveFile2 := ParamStr(3);
+	archiveFile2 := CleanParamStr(3);
 	if archiveFile2 = '' then
 		raise MissingParamException.Create(NeedArchiveFilesToMerge);
 
@@ -392,9 +462,9 @@ var
 	shouldGenerateScript: boolean;
 begin
 
-	oldDiffFileFolder := ParamStr(2);
-	scriptFilePath := ParamStr(3);
-	diffFileFolderName := ParamStr(4);
+	oldDiffFileFolder := CleanParamStr(2);
+	scriptFilePath := CleanParamStr(3);
+	diffFileFolderName := CleanParamStr(4);
 
 	if (oldDiffFileFolder = '') or (scriptFilePath = '') or (diffFileFolderName = '') then
 		raise MissingParamException.Create(InsufficientParameters);
@@ -496,11 +566,11 @@ var
 
 begin
 
-	archiveFile2 := ParamStr(3);
+	archiveFile2 := CleanParamStr(3);
 	if archiveFile2 = '' then
 		raise MissingParamException.Create(NeedArchiveFilesToMerge);
 
-	option := ParamStr(4);
+	option := CleanParamStr(4);
 
 	optionNumber := AnsiIndexStr(option,
 	['nsis',
@@ -508,8 +578,8 @@ begin
 	'filesonly',
 	'']);
 
-	p5 := ParamStr(5);
-	p6 := ParamStr(6);
+	p5 := CleanParamStr(5);
+	p6 := CleanParamStr(6);
 
 	if (p5 = '') and (optionNumber < 3) then
 		raise MissingParamException.Create(InsufficientParameters);
@@ -547,7 +617,7 @@ var
 	checksumLines, verifyPairs, archFileNames: TStringList;
 	fFiles: TRSMMFiles;
 begin
-	param3 := ParamStr(3);
+	param3 := CleanParamStr(3);
 
 	// Accept -v, --v, -vall, --vall as verify flags.
 	// Must start with '-' (bare "v" or "vall" could be a resource filename).
@@ -557,7 +627,7 @@ begin
 	if isVerify or isVerifyAll then
 	begin
 		// === Verify mode ===
-		param4 := ParamStr(4);
+		param4 := CleanParamStr(4);
 		if param4 = '' then
 			raise MissingParamException.Create(InsufficientParameters);
 
@@ -572,9 +642,9 @@ begin
 			if isInline then
 			begin
 				// Parse inline name:HASH pairs
-				for i := 4 to ParamCount do
+				for i := 4 to CleanParamCount do
 				begin
-					line := ParamStr(i);
+					line := CleanParamStr(i);
 					if line <> '' then
 						verifyPairs.Add(line);
 				end;
@@ -703,9 +773,9 @@ begin
 			else
 			begin
 				// Specific files
-				for i := 3 to ParamCount do
+				for i := 3 to CleanParamCount do
 				begin
-					fileName := ParamStr(i);
+					fileName := CleanParamStr(i);
 					if fileName <> '' then
 					begin
 						try
@@ -726,16 +796,18 @@ end;
 
 begin
 
+	ParseEcFlag;
+
 	try
 
-		method := trimCharLeft(ParamStr(1), '-');
+		method := trimCharLeft(CleanCleanParamStr(1), '-');
 		methodNumber := AnsiIndexStr(method, ['extract', 'e', 'list', 'l',
 			'add', 'a', 'delete', 'd', 'rename', 'r', 'create', 'c', 'merge', 'm',
 			'compare', 'k', 'optimize', 'o',
 			'diff-files-to-nsis', 'df2n', 'diff-files-to-batch', 'df2b', 'diff-add-keep', 'dak',
 			'checksum', 's',
 			'help', 'h', '']);
-		archiveFile := ParamStr(2);
+		archiveFile := CleanCleanParamStr(2);
 
 		// < 26: method is not `help`
 		if (archiveFile = '') And (methodNumber < 26) And (methodNumber >= 0) then
@@ -761,14 +833,29 @@ begin
 		end;
 
 	except
+		on E: ItemNotFoundException do
+		begin
+			// Per-item not-found in delete/extract: only exit 1 in strict mode
+			WriteLn(format(ErrorStr, [E.Message]));
+			if ecMode = ecStrict then
+				ExitCode := 1;
+		end;
 		on E: MissingParamException do
 		begin
 			WriteLn(format(ErrorStr, [E.Message]));
 			WriteLn;
 			help(true);
+			// normal/strict: exit 1; loose: exit 0
+			if ecMode <> ecLoose then
+				ExitCode := 1;
 		end;
 		on E: Exception do
+		begin
 			WriteLn(format(ErrorStr, [E.Message]));
+			// normal/strict: exit 1; loose: exit 0
+			if ecMode <> ecLoose then
+				ExitCode := 1;
+		end;
 	end;
 
 end.

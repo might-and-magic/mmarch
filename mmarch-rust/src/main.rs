@@ -12,9 +12,56 @@ use archive::{Archive, ArchiveEntry, ArchiveKind};
 use path_utils::*;
 use std::fs;
 use std::io;
+use std::sync::OnceLock;
 
 const MMARCH_VERSION: &str = "4.0.0";
 const MMARCH_URL: &str = "https://github.com/might-and-magic/mmarch";
+
+// ============================================================
+// Exit code mode (--ec flag)
+// ============================================================
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EcMode {
+    Strict,  // all errors → exit 1
+    Normal,  // per-item not-found → exit 0, other errors → exit 1
+    Loose,   // only checksum verify failure → exit 1
+}
+
+static EC_MODE: OnceLock<EcMode> = OnceLock::new();
+
+fn ec_mode() -> EcMode {
+    *EC_MODE.get().unwrap_or(&EcMode::Normal)
+}
+
+/// Strip --ec <mode> from args and set the global mode.
+/// Returns the cleaned arg list.
+fn parse_ec_flag(args: &[String]) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        let normalized = a.trim_start_matches('-').to_lowercase();
+        if normalized == "ec" && i + 1 < args.len() {
+            let mode_str = args[i + 1].to_lowercase();
+            let mode = match mode_str.as_str() {
+                "strict" => EcMode::Strict,
+                "normal" => EcMode::Normal,
+                "loose" => EcMode::Loose,
+                _ => {
+                    eprintln!("Warning: unknown --ec mode '{}', using 'normal'", args[i + 1]);
+                    EcMode::Normal
+                }
+            };
+            let _ = EC_MODE.set(mode);
+            i += 2;
+            continue;
+        }
+        result.push(a.clone());
+        i += 1;
+    }
+    result
+}
 
 // ============================================================
 // Dynamic archive loading
@@ -79,7 +126,8 @@ impl DynArchive {
 // ============================================================
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let raw_args: Vec<String> = std::env::args().collect();
+    let args = parse_ec_flag(&raw_args);
 
     if args.len() < 2 {
         help(false);
@@ -115,12 +163,15 @@ fn main() {
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);
-        // Only print help for parameter/usage errors (like Delphi MissingParamException)
         if e.kind() == io::ErrorKind::InvalidInput {
             println!();
             help(true);
         }
-        std::process::exit(1);
+        // In loose mode, only checksum verify triggers exit 1 (handled inside cmd_checksum).
+        // In normal/strict mode, command-level errors trigger exit 1.
+        if ec_mode() != EcMode::Loose {
+            std::process::exit(1);
+        }
     }
 }
 
@@ -202,6 +253,7 @@ fn cmd_extract(args: &[String]) -> io::Result<()> {
         if file_filter.is_empty() {
             extract_all(arch.as_archive(), &extract_to_base, "*");
         } else {
+            let mut not_found_count = 0u32;
             for i in 4..args.len() {
                 let fname = &args[i];
                 if fname.contains('*') {
@@ -214,8 +266,15 @@ fn cmd_extract(args: &[String]) -> io::Result<()> {
                             beautify_path(archive_file)
                         );
                         eprintln!("{}", e);
+                        not_found_count += 1;
                     }
                 }
+            }
+            if not_found_count > 0 && ec_mode() == EcMode::Strict {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("{} file(s) not found in the archive", not_found_count),
+                ));
             }
         }
     }
@@ -417,6 +476,7 @@ fn cmd_delete(args: &[String]) -> io::Result<()> {
         ));
     }
     let mut arch = DynArchive::load(archive_file)?;
+    let mut not_found_count = 0u32;
 
     for i in 3..args.len() {
         let fname = &args[i];
@@ -435,12 +495,20 @@ fn cmd_delete(args: &[String]) -> io::Result<()> {
                             beautify_path(fname),
                             fname
                         );
+                        not_found_count += 1;
                     }
                 }
             }
         }
     }
     arch.rebuild()?;
+    // In strict mode, per-item not-found is a command-level error
+    if not_found_count > 0 && ec_mode() == EcMode::Strict {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("{} file(s) not found in the archive", not_found_count),
+        ));
+    }
     Ok(())
 }
 
@@ -870,6 +938,8 @@ fn help(short: bool) {
     println!("mmarch checksum <ARCHIVE_FILE> --v[all] <name1:HASH1> [name2:HASH2] [...]");
     println!("mmarch optimize <ARCHIVE_FILE>");
     println!("mmarch help");
+    println!();
+    println!("Global option: --ec {{strict|normal|loose}}  (default: normal)");
 
     if !short {
         println!();
@@ -877,6 +947,10 @@ fn help(short: bool) {
         println!();
         println!("- Initial letter of the first argument can be used (e.g. `e` for `extract`)");
         println!("- File names are case-insensitive");
+        println!("- --ec controls exit code behavior:");
+        println!("    strict: all errors return exit code 1");
+        println!("    normal: per-item not-found in delete/extract returns 0, other errors return 1");
+        println!("    loose:  only checksum verification failure returns exit code 1");
         println!("- You can use the following notations");
         println!();
         println!("FOLDER: ");
