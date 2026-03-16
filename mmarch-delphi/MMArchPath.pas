@@ -1,13 +1,3 @@
-// MMArchPath unit and MMArchSimple class
-// Part of mmarch
-// Command line tool to handle Heroes 3 and Might and Magic 6, 7, 8
-// resource archive files (e.g. lod files). Based on GrayFace's MMArchive.
-// By Tom CHEN <tomchen.org@gmail.com> (tomchen.org)
-// MIT License
-// https://github.com/might-and-magic/mmarch
-
-
-
 unit MMArchPath;
 
 interface

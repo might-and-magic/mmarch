@@ -1,0 +1,36 @@
+{
+  "name": "mmarch",
+  "version": "4.0.0",
+  "description": "Command line tool to handle Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files)",
+  "author": "Tom Chen <tomchen.org@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/might-and-magic/mmarch.git"
+  },
+  "homepage": "https://github.com/might-and-magic/mmarch",
+  "keywords": [
+    "heroes-of-might-and-magic",
+    "might-and-magic",
+    "lod",
+    "game",
+    "archive",
+    "extract",
+    "cli",
+    "rust",
+    "delphi"
+  ],
+  "bin": {
+    "mmarch": "bin/mmarch"
+  },
+  "files": [
+    "bin/mmarch",
+    "install.js"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}

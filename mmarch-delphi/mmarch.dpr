@@ -20,7 +20,7 @@ type
 	MissingParamException = class(Exception);
 
 const
-	MMARCHVERSION: string = '4.0';
+	MMARCHVERSION: string = '4.0.0';
 	MMARCHURL: string = 'https://github.com/might-and-magic/mmarch';
 
 var

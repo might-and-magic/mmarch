@@ -13,7 +13,7 @@ use path_utils::*;
 use std::fs;
 use std::io;
 
-const MMARCH_VERSION: &str = "4.0";
+const MMARCH_VERSION: &str = "4.0.0";
 const MMARCH_URL: &str = "https://github.com/might-and-magic/mmarch";
 
 // ============================================================

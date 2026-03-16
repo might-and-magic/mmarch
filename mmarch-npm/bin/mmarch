@@ -1,0 +1,26 @@
+#!/usr/bin/env node
+
+"use strict";
+
+const { execFileSync } = require("child_process");
+const path = require("path");
+const fs = require("fs");
+
+const isWindows = process.platform === "win32";
+const binName = isWindows ? "mmarch.exe" : "mmarch";
+const binPath = path.join(__dirname, binName);
+
+if (!fs.existsSync(binPath)) {
+  console.error(
+    "mmarch binary not found. The postinstall download may have failed.\n" +
+    "Try: npm install -g mmarch\n" +
+    "Or download from: https://github.com/might-and-magic/mmarch/releases"
+  );
+  process.exit(1);
+}
+
+try {
+  execFileSync(binPath, process.argv.slice(2), { stdio: "inherit", windowsHide: true });
+} catch (e) {
+  process.exitCode = e.status !== undefined ? e.status : 1;
+}
