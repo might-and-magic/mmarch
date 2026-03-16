@@ -523,6 +523,8 @@ mmarch --ec strict delete events.lod nonexistent.txt
 mmarch --ec loose rename events.lod old.txt new.txt
 ```
 
+**Note:** Windows versions up to and including 4.0.0 always use the `loose` setting. Starting with later versions, the default is `normal`.
+
 ### In-archive and extracted extension difference
 
 For some archive format, some files have different file extensions in the archive and as extracted files out of the archive. Don't wrong, you can use either extension to refer to the file. Below is the list (same extension is used if not listed):

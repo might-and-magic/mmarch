@@ -766,7 +766,7 @@ fn test_checksum_inline_verify_all() {
 #[test]
 fn test_compare_v1_v2_folders() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; } // unicode folder names in test data
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("cmp_v1v2_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v1"), &dir.join("v1"));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
@@ -788,7 +788,7 @@ fn test_compare_v1_v2_folders() {
 #[test]
 fn test_compare_nsis_generation() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("cmp_nsis_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v1"), &dir.join("v1"));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
@@ -812,7 +812,7 @@ fn test_compare_nsis_generation() {
 #[test]
 fn test_compare_batch_generation() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("cmp_batch_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v1"), &dir.join("v1"));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
@@ -835,7 +835,7 @@ fn test_compare_batch_generation() {
 #[test]
 fn test_compare_filesonly_v1_v2() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("cmp_fo_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v1"), &dir.join("v1"));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
@@ -861,7 +861,7 @@ fn test_compare_filesonly_v1_v2() {
 #[test]
 fn test_df2n_from_compare() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("df2n_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v1"), &dir.join("v1"));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
@@ -885,7 +885,7 @@ fn test_df2n_from_compare() {
 #[test]
 fn test_df2b_from_compare() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("df2b_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v1"), &dir.join("v1"));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
@@ -909,7 +909,7 @@ fn test_df2b_from_compare() {
 #[test]
 fn test_compare_v2_v3_folders() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("cmp_v2v3_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
         copy_dir_recursive(&test_compare_dir().join("compare test v3"), &dir.join("v3"));
@@ -947,7 +947,7 @@ fn test_compare_v2_v3_folders() {
 #[test]
 fn test_compare_two_archives_from_testdata() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("cmp_arch_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v1"), &dir.join("v1"));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
@@ -966,7 +966,7 @@ fn test_compare_two_archives_from_testdata() {
 #[test]
 fn test_compare_archive_filesonly() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("cmp_arch_fo_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v1"), &dir.join("v1"));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
@@ -1009,7 +1009,7 @@ fn test_compare_archive_filesonly() {
 #[test]
 fn test_3ver_merger_v1_v2_v3() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode in test data paths
         let dir = temp_dir(&format!("3ver_{}", label));
         copy_dir_recursive(&test_compare_dir().join("compare test v1"), &dir.join("v1"));
         copy_dir_recursive(&test_compare_dir().join("compare test v2"), &dir.join("v2"));
@@ -1283,8 +1283,7 @@ fn test_path_with_spaces() {
 #[test]
 fn test_path_with_unicode() {
     for (label, ref bin) in get_binaries() {
-        // Delphi binary has issues with unicode paths (System Error Code 123)
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi ANSI API can't handle unicode paths (System Error Code 123)
 
         let dir = temp_dir(&format!("unicode_{}", label));
         let sub = "folder_\u{4F60}\u{597D}";
@@ -1440,8 +1439,7 @@ fn test_roundtrip_mmbitmapslod() {
 #[test]
 fn test_roundtrip_mmspriteslod() {
     for (label, ref bin) in get_binaries() {
-        // Delphi rejects non-bitmap files in sprites LOD
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi rejects non-bitmap files in sprites LOD
         roundtrip_test(bin, label, "mmspriteslod", "lod", "rt_sprites");
     }
 }
@@ -2168,7 +2166,7 @@ fn test_mmbitmapslod_full_workflow() {
 #[test]
 fn test_mmspriteslod_full_workflow() {
     for (label, ref bin) in get_binaries() {
-        if label == "delphi" { continue; }
+        if label == "delphi" { continue; } // Delphi rejects non-bitmap files in sprites LOD
         let dir = temp_dir(&format!("spr_full_{}", label));
         write_test_file(&dir.join("sprite1.bin"), b"sprite data 1");
         write_test_file(&dir.join("sprite2.bin"), b"sprite data 2");
@@ -3401,5 +3399,209 @@ fn test_ec_flag_at_end() {
         let (_, _, ok) = run_in(bin, &dir, &["delete", "test.lod", "ghost.txt", "--ec", "strict"]);
         assert!(!ok, "[{}] --ec at end should work", label);
         cleanup(&dir);
+    }
+}
+
+// ===========================================================================
+// J: Real game archive file tests
+// ===========================================================================
+
+/// Helper to get a real test file path
+fn real_file(name: &str) -> PathBuf {
+    test_general_dir().join(name)
+}
+
+/// Helper: copy real file to temp dir, return archive path in temp dir
+fn copy_real_to_temp(name: &str, dir: &Path) -> PathBuf {
+    let src = real_file(name);
+    assert!(src.exists(), "Real test file {:?} not found", src);
+    let dst = dir.join(name);
+    fs::copy(&src, &dst).unwrap();
+    dst
+}
+
+/// Generic test: list, extract all, checksum, extract specific, delete, rename
+fn real_archive_test(
+    bin: &Path,
+    label: &str,
+    file_name: &str,
+    expected_names: &[&str],      // in-archive names
+    expected_extracted: &[&str],   // extracted names (with .bmp/.wav/.smk etc)
+    expected_crcs: &[(&str, &str)], // (extracted_name, hex CRC32)
+) {
+    let dir = temp_dir(&format!("real_{}_{}", file_name.replace('.', "_"), label));
+
+    // Copy to temp
+    let archive = copy_real_to_temp(file_name, &dir);
+    let archive_rel = file_name;
+
+    // --- List ---
+    let names = list_archive_in(bin, &dir, archive_rel);
+    assert_eq!(names.len(), expected_names.len(),
+        "[{}] {} list count: {:?}", label, file_name, names);
+    for en in expected_names {
+        assert!(names.iter().any(|n| n.eq_ignore_ascii_case(en)),
+            "[{}] {} should contain '{}': {:?}", label, file_name, en, names);
+    }
+
+    // --- Extract all ---
+    run_ok_in(bin, &dir, &["extract", archive_rel, "out_all"]);
+    for ef in expected_extracted {
+        assert!(dir.join("out_all").join(ef).exists(),
+            "[{}] {} should extract '{}'. Dir contents: {:?}",
+            label, file_name, ef,
+            fs::read_dir(dir.join("out_all")).ok().map(|d|
+                d.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string()).collect::<Vec<_>>()
+            ));
+    }
+
+    // --- Checksum all ---
+    let stdout = run_ok_in(bin, &dir, &["checksum", archive_rel, "*"]);
+    for (ext_name, hex_crc) in expected_crcs {
+        assert!(stdout.contains(ext_name) && stdout.contains(hex_crc),
+            "[{}] {} checksum should contain '{}' with CRC '{}': {}",
+            label, file_name, ext_name, hex_crc, stdout);
+    }
+
+    // --- Extract specific file (by extracted name) ---
+    if !expected_extracted.is_empty() {
+        let first_ext = expected_extracted[0];
+        run_ok_in(bin, &dir, &["extract", archive_rel, "out_single", first_ext]);
+        assert!(dir.join("out_single").join(first_ext).exists(),
+            "[{}] {} extract specific '{}'", label, file_name, first_ext);
+    }
+
+    // --- Delete + Rename (on a copy) ---
+    let copy_name = format!("copy_{}", file_name);
+    fs::copy(&archive, dir.join(&copy_name)).unwrap();
+
+    if expected_names.len() >= 2 {
+        // Delete last entry
+        let last = expected_names.last().unwrap();
+        run_ok_in(bin, &dir, &["delete", &copy_name, last]);
+        let names_after = list_archive_in(bin, &dir, &copy_name);
+        assert_eq!(names_after.len(), expected_names.len() - 1,
+            "[{}] {} after delete: {:?}", label, file_name, names_after);
+
+        // Rename first entry
+        let first = expected_names[0];
+        run_ok_in(bin, &dir, &["rename", &copy_name, first, "RENAMED_TEST"]);
+        let names_ren = list_archive_in(bin, &dir, &copy_name);
+        assert!(names_ren.iter().any(|n| n == "RENAMED_TEST"),
+            "[{}] {} after rename: {:?}", label, file_name, names_ren);
+    }
+
+    cleanup(&dir);
+}
+
+// --- Individual tests per real archive type ---
+
+#[test]
+fn test_real_mmiconslod() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_icons.lod",
+            &["GF-ASpell", "GF-ASpellD", "GF-Swrd"],
+            &["GF-ASpell.bmp", "GF-ASpellD.bmp", "GF-Swrd.bmp"],
+            &[("GF-ASpell.bmp", "C18D8374"), ("GF-ASpellD.bmp", "E733CC78"), ("GF-Swrd.bmp", "08E423DB")],
+        );
+    }
+}
+
+#[test]
+fn test_real_mmbitmapslod() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_bitmaps.lod",
+            &["HDLAV007", "HDWTR006", "pal453"],
+            &["HDLAV007.bmp", "HDWTR006.bmp", "pal453.act"],
+            &[("HDLAV007.bmp", "DB3DF5C7"), ("HDWTR006.bmp", "EF1DAA04"), ("pal453.act", "C35ACC9F")],
+        );
+    }
+}
+
+#[test]
+fn test_real_mmspriteslod() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_sprites.lod",
+            &["Editor i1", "Editor i2", "Editor i3"],
+            &["Editor i1.bmp", "Editor i2.bmp", "Editor i3.bmp"],
+            &[("Editor i1.bmp", "ACDC9E8D"), ("Editor i2.bmp", "B21F7CBE"), ("Editor i3.bmp", "5B86FB98")],
+        );
+    }
+}
+
+#[test]
+fn test_real_mm8loclod() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_mm8loc.T.lod",
+            &["D07.EVT", "d16.EVT", "d17.EVT"],
+            &["D07.EVT", "d16.EVT", "d17.EVT"],
+            &[("D07.EVT", "382A0F77"), ("d16.EVT", "2DEED09D"), ("d17.EVT", "BAF06A87")],
+        );
+    }
+}
+
+#[test]
+fn test_real_mm78gameslod() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_games78.lod",
+            &["d46.blv", "eleme.blv"],
+            &["d46.blv", "eleme.blv"],
+            &[("d46.blv", "8E501F86"), ("eleme.blv", "7B30E419")],
+        );
+    }
+}
+
+#[test]
+fn test_real_mm6gameslod() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_games6.lod",
+            &["cd1.blv", "cd2.blv", "cd3.blv"],
+            &["cd1.blv", "cd2.blv", "cd3.blv"],
+            &[("cd1.blv", "4615EFE5"), ("cd2.blv", "5E914E34"), ("cd3.blv", "D69782A3")],
+        );
+    }
+}
+
+#[test]
+fn test_real_mm78save() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_save78.mm7",
+            &["clock.bin", "d01.dlv", "d02.dlv"],
+            &["clock.bin", "d01.dlv", "d02.dlv"],
+            &[("clock.bin", "46EECD98"), ("d01.dlv", "55399557"), ("d02.dlv", "64DAD008")],
+        );
+    }
+}
+
+#[test]
+fn test_real_mm6save() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_save6.mm6",
+            &["cd1.dlv", "cd2.dlv", "cd3.dlv"],
+            &["cd1.dlv", "cd2.dlv", "cd3.dlv"],
+            &[("cd1.dlv", "D4AD9237"), ("cd2.dlv", "9282B222"), ("cd3.dlv", "733613DC")],
+        );
+    }
+}
+
+#[test]
+fn test_real_mmsnd() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_audio.snd",
+            &["01archerA_attack", "01archerA_charge", "01archerA_die"],
+            &["01archerA_attack.wav", "01archerA_charge.wav", "01archerA_die.wav"],
+            &[("01archerA_attack.wav", "A3C75AA5"), ("01archerA_charge.wav", "ABC10D20"), ("01archerA_die.wav", "3767B11E")],
+        );
+    }
+}
+
+#[test]
+fn test_real_h3mm78vid() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_video.vid",
+            &["Apthcmid", "Apthcrch"],
+            &["Apthcmid.smk", "Apthcrch.smk"],
+            &[("Apthcmid.smk", "F8D57F66"), ("Apthcrch.smk", "24C36BEB")],
+        );
     }
 }

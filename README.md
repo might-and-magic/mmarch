@@ -523,6 +523,8 @@ mmarch --ec strict delete events.lod nonexistent.txt
 mmarch --ec loose rename events.lod old.txt new.txt
 ```
 
+**Note:** Windows versions up to and including 4.0.0 always use the `loose` setting. Starting with later versions, the default is `normal`.
+
 ### In-archive and extracted extension difference
 
 For some archive format, some files have different file extensions in the archive and as extracted files out of the archive. Don't wrong, you can use either extension to refer to the file. Below is the list (same extension is used if not listed):
@@ -642,6 +644,7 @@ The workflow triggers on:
 * [2020-04-02] v3.1: diff-files-to-* instead of compare-files-to-*; diff-add-keep; fix problem moving to subfolder
 * [2020-04-22] v3.2: minor fix: diff-files-to-* do not work when old and new diff folders are the same
 * [2026-03-16] v4.0.0: fix batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files; add `checksum` command for CRC32 generation and verification; Rust port for Linux and macOS; npm release
+* [2026-03-17] v5.0.0: more Rust version fixes and comprehensive tests; replace ambiguous `/v[all]` with `--v[all]` flag; improve exit code handling instead of returning 0 in nearly all cases
 
 ## License
 
