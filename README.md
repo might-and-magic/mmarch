@@ -26,7 +26,7 @@ mmarch <a href="#diff-add-keep"><strong>d</strong>iff-<strong>a</strong>dd-<stro
 mmarch <a href="#checksum">check<strong>s</strong>um</a> &lt;ARCHIVE_FILE&gt;
 mmarch checksum &lt;ARCHIVE_FILE&gt; [FILE_1] [FILE_2] [...]
 mmarch checksum &lt;ARCHIVE_FILE&gt; /v[all] &lt;CRC32_FILE&gt;
-mmarch checksum &lt;ARCHIVE_FILE&gt; /v[all] name1:HASH1 [name2:HASH2] [...]
+mmarch checksum &lt;ARCHIVE_FILE&gt; /v[all] &lt;name1:HASH1&gt; [name2:HASH2] [...]
 mmarch <a href="#optimize"><strong>o</strong>ptimize</a> &lt;ARCHIVE_FILE&gt;
 mmarch <a href="#help"><strong>h</strong>elp</a>
 </pre>
@@ -36,7 +36,7 @@ mmarch <a href="#help"><strong>h</strong>elp</a>
 For the first argument, use <code><strong>k</strong></code> for <code>compare</code>, <code><strong>s</strong></code> for <code>checksum</code>, <code><strong>df2n</strong></code> for <code>diff-files-to-nsis</code>, <code><strong>df2b</strong></code> for <code>diff-files-to-batch</code>, <code><strong>dak</strong></code> for <code>diff-add-keep</code>, otherwise, use the initial letter as a shortcut.
 
 * Usage Notes: | [`FOLDER`](#notes-on-folder) | [`FILE_TO_XXXX_?`](#notes-on-file_to_xxxx_) | [Batch archive extraction](#batch-archive-extraction) | [Palette](#add-file-with-palette) arguments | [Other notes](#other-tips-and-notes)
-* For developer: | [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files) | [Compilation](#compilation) | [Change Log](#change-log)
+* For developer: | [Work with batch, NSIS scripts](#work-with-batch-nsis-and-other-scripts) (to produce game patch or MOD installation files) | [Development](#development) | [Change Log](#change-log)
 
 [Real-world example and tutorial: How to make a .exe MMMerge Update Patch](tutorial)
 
@@ -345,8 +345,8 @@ mmarch checksum <ARCHIVE_FILE> /vall <CRC32_FILE>
 Verify CRC32 of ALL resource files. Not only must every file listed in `CRC32_FILE` match, but the listed files must also be ALL the files in the archive (no unlisted files allowed).
 
 ```
-mmarch checksum <ARCHIVE_FILE> /v name1:HASH1 [name2:HASH2] [...]
-mmarch checksum <ARCHIVE_FILE> /vall name1:HASH1 [name2:HASH2] [...]
+mmarch checksum <ARCHIVE_FILE> /v <name1:HASH1> [name2:HASH2] [...]
+mmarch checksum <ARCHIVE_FILE> /vall <name1:HASH1> [name2:HASH2] [...]
 ```
 
 Inline verify mode (if the first argument after `/v` or `/vall` contains `:`). Instead of reading checksums from a file, specify them directly as `filename:CRC32HASH` pairs.
@@ -564,7 +564,7 @@ A user may:
 
 The batch file will not perform a self-deletion, users have to delete .bat, mmarch.exe and `DIFF_FOLDER` manually.
 
-## Compilation
+## Development
 
 ### Windows (Delphi)
 
@@ -612,7 +612,7 @@ The workflow triggers on:
 * [2020-03-31] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer; tutorial
 * [2020-04-02] v3.1: diff-files-to-* instead of compare-files-to-*; diff-add-keep; fix problem moving to subfolder
 * [2020-04-22] v3.2: minor fix: diff-files-to-* do not work when old and new diff folders are the same
-* [2026-03-16] v4.0.0: performance: batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files; add `checksum` command for CRC32 generation and verification; Rust port
+* [2026-03-16] v4.0.0: fix batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files; add `checksum` command for CRC32 generation and verification; Rust port for Linux and macOS; npm release
 
 ## License
 

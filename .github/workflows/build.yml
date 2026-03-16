@@ -12,8 +12,11 @@ env:
 
 jobs:
   test:
-    name: Test (Windows, Rust + Delphi)
-    runs-on: windows-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     defaults:
       run:
         working-directory: mmarch-rust
@@ -21,7 +24,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --test integration --release
-        # Delphi binary not available in CI; tests run Rust binary only
 
   build:
     name: Build ${{ matrix.name }}

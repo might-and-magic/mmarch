@@ -104,7 +104,7 @@ begin
     WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '>');
     WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> [FILE_1] [FILE_2] [...]');
     WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> /v[all] <CRC32_FILE>');
-    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> /v[all] name1:HASH1 [name2:HASH2] [...]');
+    WriteLn('mmarch checksum <' + HELPPRM_ARCHIVE_FILE + '> /v[all] <name1:HASH1> [name2:HASH2] [...]');
 	WriteLn('mmarch optimize <' + HELPPRM_ARCHIVE_FILE + '>');
 	WriteLn('mmarch help');
 
