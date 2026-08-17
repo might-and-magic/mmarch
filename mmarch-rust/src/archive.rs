@@ -136,7 +136,9 @@ impl ArchiveKind {
 }
 
 /// Trait for archive format implementations.
-pub trait Archive {
+// Sync supertrait: archives are plain data + on-demand file reads, and
+// extract_all() decompresses entries on all cores (rayon)
+pub trait Archive: Sync {
     fn kind(&self) -> ArchiveKind;
     fn file_path(&self) -> &str;
     fn entries(&self) -> &[ArchiveEntry];

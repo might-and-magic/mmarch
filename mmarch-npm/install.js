@@ -8,7 +8,9 @@ const path = require("path");
 const REPO = "might-and-magic/mmarch";
 const VERSION = require("./package.json").version;
 
-// Maps Node.js platform-arch to GitHub Release asset name
+// Maps Node.js platform-arch to GitHub Release asset name.
+// Since v6.0.0 every asset here is the Rust build (the Delphi build is
+// released separately as mmarch-delphi.exe and not used by npm).
 const PLATFORMS = {
   "win32-x64":    "mmarch.exe",
   "win32-ia32":   "mmarch.exe",

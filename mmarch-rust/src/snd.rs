@@ -1,5 +1,5 @@
 use crate::archive::{Archive, ArchiveEntry, ArchiveKind};
-use crate::lod::{zlib_compress, zlib_decompress};
+use crate::lod::{zlib_compress_cached, zlib_decompress};
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
@@ -295,7 +295,7 @@ pub fn snd_add_file(archive: &mut SndArchive, file_path: &str) -> io::Result<()>
 
     let is_mm = archive.kind == ArchiveKind::SndMM;
     let (stored_data, size, unpacked_size) = if is_mm {
-        let compressed = zlib_compress(&file_data)?;
+        let compressed = zlib_compress_cached(&file_data)?;
         if compressed.len() < file_data.len() {
             (compressed.clone(), compressed.len() as u32, file_data.len() as u32)
         } else {

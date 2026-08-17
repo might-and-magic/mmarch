@@ -14,7 +14,7 @@ use std::fs;
 use std::io;
 use std::sync::OnceLock;
 
-const MMARCH_VERSION: &str = "5.0.0";
+const MMARCH_VERSION: &str = "6.0.0";
 const MMARCH_URL: &str = "https://github.com/might-and-magic/mmarch";
 
 // ============================================================
@@ -104,6 +104,16 @@ impl DynArchive {
             DynArchive::Lod(a) => lod::lod_add_file(a, file_path),
             DynArchive::Snd(a) => snd::snd_add_file(a, file_path),
             DynArchive::Vid(a) => vid::vid_add_file(a, file_path),
+        }
+    }
+
+    /// Whether this archive's add path zlib-compresses raw file bytes —
+    /// if so, a bulk add can pre-compress them on all cores first.
+    fn precompressible(&self) -> bool {
+        match self {
+            DynArchive::Lod(a) => lod::kind_precompressible(a.kind),
+            DynArchive::Snd(a) => a.kind == crate::archive::ArchiveKind::SndMM,
+            DynArchive::Vid(_) => false,
         }
     }
 
@@ -282,31 +292,37 @@ fn cmd_extract(args: &[String]) -> io::Result<()> {
 }
 
 fn extract_all(arch: &dyn Archive, folder: &str, ext: &str) {
+    use rayon::prelude::*;
     let _ = create_dir_recur(folder);
     let entries = arch.entries();
-    for i in 0..entries.len() {
-        let entry = &entries[i];
-        let entry_ext = get_file_ext(&entry.name);
-
-        let matches = if ext == "*" {
-            true
-        } else if ext.is_empty() {
-            entry_ext.is_empty()
-        } else {
-            entry_ext.eq_ignore_ascii_case(ext)
-                || check_extracted_ext_match(arch, i, ext)
-        };
-
-        if matches {
-            if let Err(e) = extract_entry_to_folder(arch, i, folder) {
-                eprintln!(
-                    "File `{}` in archive `{}` error:",
-                    beautify_path(&entry.name),
-                    beautify_path(arch.file_path())
-                );
-                eprintln!("{}", e);
+    let indices: Vec<usize> = (0..entries.len())
+        .filter(|&i| {
+            let entry_ext = get_file_ext(&entries[i].name);
+            if ext == "*" {
+                true
+            } else if ext.is_empty() {
+                entry_ext.is_empty()
+            } else {
+                entry_ext.eq_ignore_ascii_case(ext)
+                    || check_extracted_ext_match(arch, i, ext)
             }
-        }
+        })
+        .collect();
+
+    // per-entry decompression is independent -> extract on all cores;
+    // errors are collected and reported afterwards in entry order
+    let mut errors: Vec<(usize, io::Error)> = indices
+        .par_iter()
+        .filter_map(|&i| extract_entry_to_folder(arch, i, folder).err().map(|e| (i, e)))
+        .collect();
+    errors.sort_by_key(|(i, _)| *i);
+    for (i, e) in errors {
+        eprintln!(
+            "File `{}` in archive `{}` error:",
+            beautify_path(&entries[i].name),
+            beautify_path(arch.file_path())
+        );
+        eprintln!("{}", e);
     }
 }
 
@@ -461,6 +477,13 @@ fn add_proc(arch: &mut DynArchive, args: &[String], from: usize) -> io::Result<(
 
 fn add_all(arch: &mut DynArchive, folder: &str, ext: &str) -> io::Result<()> {
     let files = get_all_files_in_folder(folder, ext, false)?;
+    if files.len() > 1 && arch.precompressible() {
+        let full_paths: Vec<String> = files
+            .iter()
+            .map(|f| format!("{}{}", with_trailing_slash(folder), f))
+            .collect();
+        lod::precompress_files(&full_paths);
+    }
     for fname in &files {
         let full_path = format!("{}{}", with_trailing_slash(folder), fname);
         if let Err(e) = arch.add_file(&full_path) {

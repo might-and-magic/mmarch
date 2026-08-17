@@ -2,9 +2,11 @@
 
 Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows, Linux and macOS.
 
-[Download mmarch v5.0.0 for Windows](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch.exe)
+[Download mmarch v6.0.0 for Windows](https://github.com/might-and-magic/mmarch/releases/download/v6.0.0/mmarch.exe)
 
-Other platforms: Linux [x64](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-linux-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-linux-arm64), [ia32](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-linux-ia32) | macOS [x64](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-darwin-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch-darwin-arm64) | or [`npm i -g mmarch`](https://www.npmjs.com/package/mmarch) with [Node.js](https://nodejs.org/)
+Other platforms: Linux [x64](https://github.com/might-and-magic/mmarch/releases/download/v6.0.0/mmarch-linux-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v6.0.0/mmarch-linux-arm64), [ia32](https://github.com/might-and-magic/mmarch/releases/download/v6.0.0/mmarch-linux-ia32) | macOS [x64](https://github.com/might-and-magic/mmarch/releases/download/v6.0.0/mmarch-darwin-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v6.0.0/mmarch-darwin-arm64) | or [`npm i -g mmarch`](https://www.npmjs.com/package/mmarch) with [Node.js](https://nodejs.org/)
+
+All the binaries above are the [Rust implementation](#development) (since v6.0.0, on every platform including Windows). The Windows `mmarch.exe` is a 32-bit binary, so it runs on 32-bit and 64-bit Windows alike. The original [Delphi implementation](#development) is still released as [`mmarch-delphi.exe`](https://github.com/might-and-magic/mmarch/releases/download/v6.0.0/mmarch-delphi.exe) (32-bit Windows; unchanged since v5.0.0 and self-reports that version), but is no longer what npm installs.
 
 Based on [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive) ([repo](https://github.com/GrayFace/Misc/)). If you need a graphical user interface tool, use MMArchive.
 
@@ -597,19 +599,12 @@ The batch file will not perform a self-deletion, users have to delete .bat, mmar
 
 ## Development
 
-### Windows (Delphi)
+**mmarch** has two implementations living side by side in this repository:
 
-Original Delphi version is available in the `mmarch-delphi/` directory. It is used to build Windows versions.
+* [`mmarch-rust/`](mmarch-rust) — the **primary implementation since v6.0.0**, used to build every released binary (Windows, Linux and macOS) and everything npm installs.
+* [`mmarch-delphi/`](mmarch-delphi) — the **original implementation**, built on GrayFace's RSPak/RSLod. Since v6.0.0 it is no longer used for the platform binaries, but it is still maintained, compiled, and attached to each release as `mmarch-delphi.exe` (32-bit Windows) for reference and as a fallback.
 
-* `git clone` or download mmarch's source
-* `git clone` or download [GrayFace/Misc](https://github.com/GrayFace/Misc)
-* Copy or move `RSPak/` folder from GrayFace/Misc project into mmarch's `mmarch-delphi/` folder. **Do not overwrite** the patched `RSPak/Extra/RSLod.pas` already in the repo, it contains a bug fix for file data corruption when adding multiple files to an archive.
-* Open "mmarch.bdsproj" file with Borland Developer Studio 2006 or Delphi 10 (it may or may not work with newer version Borland, see [GrayFace's note](https://github.com/GrayFace/Misc))
-* Compile
-
-### Linux / macOS (Rust)
-
-A cross-platform Rust port is available in the `mmarch-rust/` directory. It has the same CLI interface and behavior as the Delphi version (outputs use CRLF line ending as well). It is used to build Linux and macOS versions. See [§ Known differences between Rust and Delphi versions](#known-differences-between-rust-and-delphi-versions) for minor gaps.
+### Rust (all released binaries)
 
 ```bash
 cd mmarch-rust
@@ -618,9 +613,21 @@ cargo build --release
 
 The binary will be at `mmarch-rust/target/release/mmarch` (or `mmarch.exe` on Windows).
 
+The Rust version has the same CLI interface and behavior as the Delphi version (outputs use CRLF line ending as well); see [§ Known differences between Rust and Delphi versions](#known-differences-between-rust-and-delphi-versions) for the remaining minor gaps. Since v6.0.0 it compresses and extracts archive entries **in parallel on all CPU cores** (each entry is an independent zlib stream), which makes creating large archives (e.g. a sound .snd with thousands of wavs) several times faster; the produced archives are byte-identical to a serial run.
+
+### Delphi (the original implementation)
+
+* `git clone` or download mmarch's source
+* `git clone` or download [GrayFace/Misc](https://github.com/GrayFace/Misc)
+* Copy or move `RSPak/` folder from GrayFace/Misc project into mmarch's `mmarch-delphi/` folder. **Do not overwrite** the patched `RSPak/Extra/RSLod.pas` already in the repo, it contains a bug fix for file data corruption when adding multiple files to an archive.
+* Open "mmarch.bdsproj" file with Borland Developer Studio 2006 or Delphi 10 (it may or may not work with newer version Borland, see [GrayFace's note](https://github.com/GrayFace/Misc))
+* Compile
+
 ### Known differences between Rust and Delphi versions
 
-The Rust port covers the same CLI interface as the Delphi version, but there are a few gaps:
+The Rust implementation covers the same CLI interface as the Delphi version, and since v6.0.0 the archive **headers** it writes are byte-identical to the Delphi version and to the real game files (v5 Rust wrote wrong `Version`/`Description`/`LodType` header fields for `mm78gameslod` and `mm8loclod`, making MMEditor/MMArchive reject those archives with "Unknown LOD version" — [issue #2](https://github.com/might-and-magic/mmarch/issues/2)). The remaining gaps:
+
+- **zlib byte-level difference:** both implementations produce valid zlib streams, but not bit-identical ones (different zlib libraries), so an archive built by one may differ byte-wise from the other while containing identical resources (`mmarch compare` shows them as equal).
 
 - **BMP palette handling (`/p` and auto-palette):** The Delphi version converts `.bmp` files to the internal LOD bitmap format with palette lookup when adding to `mmbitmapslod` or `mmspriteslod` archives. The Rust version stores `.bmp` files as generic data (BmpSize=0). The `/p PALETTE_INDEX` flag is accepted and validated but the palette index is not actually used for bitmap conversion. Auto-palette detection for `.bmp` files is also not implemented. Additionally, the Delphi version rejects non-BMP files in `mmspriteslod` archives, while the Rust version allows adding any file type.
 - **Non-ASCII case-insensitive comparison:** The Delphi version uses Windows locale-aware `SameText` for case-insensitive name matching (handles accented characters etc.). The Rust version uses ASCII-only case folding (`eq_ignore_ascii_case`). This only matters for archive entries with non-ASCII names, which are rare in game archives.
@@ -633,10 +640,8 @@ The Rust integration tests run against both the Rust binary and (on Windows, if 
 
 ```bash
 cd mmarch-rust
-cargo +stable-x86_64-pc-windows-gnu test --test integration --release
+cargo test --test integration --release
 ```
-
-(Remove `+stable-x86_64-pc-windows-gnu` on non-Windows)
 
 ### GitHub CI
 
@@ -644,7 +649,7 @@ The workflow triggers on:
 
 - **Push** to `master` branch (Test)
 - **Pull requests** targeting `master` (Test)
-- **Tags** matching `v*` (Test-Build-Release)
+- **Tags** matching `v*` (Test-Build-Release: builds the Rust binaries for every platform — Windows 32-bit, Linux x64/arm64/ia32, macOS x64/arm64 — attaches the prebuilt `mmarch-delphi.exe` from the repo, creates the GitHub Release, and publishes npm)
 
 ## Change Log
 * [2020-03-11] v1.0: initial release
@@ -654,6 +659,7 @@ The workflow triggers on:
 * [2020-04-22] v3.2: minor fix: diff-files-to-* do not work when old and new diff folders are the same
 * [2026-03-16] v4.0.0: fix batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files; add `checksum` command for CRC32 generation and verification; Rust port for Linux and macOS; npm release
 * [2026-03-17] v5.0.0: more Rust version fixes and comprehensive tests; replace ambiguous `/v[all]` with `--v[all]` flag; improve exit code handling instead of returning 0 in nearly all cases; fix some minor bugs of Delphi version
+* [2026-08-17] v6.0.0: Rust version compresses and extracts archive entries in parallel on all CPU cores (creating big archives is ~7× faster, byte-identical output); fix Rust-written `mm78gameslod`/`mm8loclod` headers that MMEditor/MMArchive rejected with "Unknown LOD version" ([#2](https://github.com/might-and-magic/mmarch/issues/2)); all binaries including Windows `mmarch.exe` (32-bit) are now the Rust build; the Delphi build is still released as `mmarch-delphi.exe`
 
 ## License
 

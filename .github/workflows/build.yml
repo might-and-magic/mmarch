@@ -33,26 +33,39 @@ jobs:
     strategy:
       matrix:
         include:
+          # one 32-bit Windows binary: runs on 32-bit and 64-bit Windows
+          # alike (and on the old machines this old game lives on);
+          # measured identical parallel-compression performance to x64
+          - name: win32
+            os: windows-latest
+            target: i686-pc-windows-msvc
+            artifact: mmarch-win32
+            bin: mmarch.exe
           - name: linux-x64
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact: mmarch-linux-x64
+            bin: mmarch
           - name: linux-arm64
             os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             artifact: mmarch-linux-arm64
+            bin: mmarch
           - name: linux-ia32
             os: ubuntu-latest
             target: i686-unknown-linux-musl
             artifact: mmarch-linux-ia32
+            bin: mmarch
           - name: darwin-x64
             os: macos-14
             target: x86_64-apple-darwin
             artifact: mmarch-darwin-x64
+            bin: mmarch
           - name: darwin-arm64
             os: macos-14
             target: aarch64-apple-darwin
             artifact: mmarch-darwin-arm64
+            bin: mmarch
     defaults:
       run:
         working-directory: mmarch-rust
@@ -96,14 +109,14 @@ jobs:
       - name: Rename binary
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/mmarch dist/mmarch
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/${{ matrix.bin }}
         shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: mmarch-rust/dist/mmarch
+          path: mmarch-rust/dist/${{ matrix.bin }}
           if-no-files-found: error
 
   release:
@@ -124,12 +137,17 @@ jobs:
         run: |
           for dir in artifacts/mmarch-*; do
             name=$(basename "$dir")
-            chmod +x "$dir/mmarch" 2>/dev/null || true
-            cp "$dir/mmarch" "./${name}"
+            f=$(ls "$dir")
+            chmod +x "$dir/$f" 2>/dev/null || true
+            case "$name" in
+              mmarch-win32) cp "$dir/$f" ./mmarch.exe ;;
+              *)            cp "$dir/$f" "./${name}" ;;
+            esac
           done
 
-          # Windows: Delphi prebuilt from repo
-          cp mmarch-delphi/mmarch.exe ./mmarch.exe
+          # The original Delphi build (32-bit), prebuilt from the repo;
+          # released for reference/legacy use, not used by npm
+          cp mmarch-delphi/mmarch.exe ./mmarch-delphi.exe
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -139,18 +157,22 @@ jobs:
           body: |
             ## Downloads
 
+            All binaries are the Rust implementation, except `mmarch-delphi.exe` (the original Delphi implementation, kept for reference).
+
             | Platform | File |
             |----------|------|
-            | Windows (32/64-bit) | `mmarch.exe` |
+            | Windows (32-bit binary, runs on 64-bit too) | `mmarch.exe` |
             | Linux x64 | `mmarch-linux-x64` |
             | Linux arm64 | `mmarch-linux-arm64` |
             | Linux ia32 | `mmarch-linux-ia32` |
             | macOS Intel | `mmarch-darwin-x64` |
             | macOS Apple Silicon | `mmarch-darwin-arm64` |
+            | Windows (Delphi build, unchanged since v5.0.0) | `mmarch-delphi.exe` |
 
             Also available via npm: `npm install -g mmarch`
           files: |
             mmarch.exe
+            mmarch-delphi.exe
             mmarch-linux-x64
             mmarch-linux-arm64
             mmarch-linux-ia32

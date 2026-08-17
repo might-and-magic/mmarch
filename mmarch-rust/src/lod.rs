@@ -554,7 +554,7 @@ fn extract_games_lod(raw: &[u8], kind: ArchiveKind, name: &str) -> io::Result<Ve
 /// Wraps the file data with 16-byte name + 32-byte TMMLodFile header.
 /// All files are stored as non-BMP (BmpSize=0) with zlib compression.
 fn wrap_tmmlodfile(name: &str, file_data: &[u8]) -> io::Result<Vec<u8>> {
-    let compressed = zlib_compress(file_data)?;
+    let compressed = zlib_compress_cached(file_data)?;
     let (stored_payload, _data_size, unp_size) = if compressed.len() < file_data.len() {
         (compressed, file_data.len(), file_data.len())
     } else {
@@ -604,7 +604,7 @@ fn wrap_games_lod(file_data: &[u8], kind: ArchiveKind, name: &str) -> io::Result
         return Ok((file_data.to_vec(), 0));
     }
 
-    let compressed = zlib_compress(file_data)?;
+    let compressed = zlib_compress_cached(file_data)?;
     let is7 = kind_is_games7(kind);
     let hdr_size = if is7 { GAMES7_HEADER_SIZE } else { GAMES_HEADER_SIZE };
 
@@ -894,6 +894,7 @@ impl Archive for LodArchive {
 
                 let (ver_str, lod_type_str) = kind_to_mm_strings(kind);
                 write_fixed_string(&mut h, 4, 80, ver_str);
+                write_fixed_string(&mut h, 84, 80, kind_to_mm_description(kind));
                 write_fixed_string(&mut h, 256, 16, lod_type_str);
 
                 write_u32_le(&mut h, 164, 100); // unk1
@@ -921,13 +922,19 @@ impl Archive for LodArchive {
     }
 }
 
+// Version/LodType strings as the real game files (and RSLod's LodTypes
+// table) have them. Note: Games7 uses the SAME "GameMMVI" header as
+// Games — MM7/8-format games LODs are told apart by the per-entry data
+// signature, not the header (see the sig scan in LodArchive::load).
+// GitHub issue #2: writing a made-up "GameMMVII" made MMEditor/RSLod
+// reject the archive with "Unknown LOD version".
 fn kind_to_mm_strings(kind: ArchiveKind) -> (&'static str, &'static str) {
     match kind {
         ArchiveKind::LodBitmaps => ("MMVI", "bitmaps"),
         ArchiveKind::LodIcons => ("MMVI", "icons"),
         ArchiveKind::LodSprites => ("MMVI", "sprites08"),
-        ArchiveKind::LodMM8 => ("MMVIII", "bitmaps"),
-        ArchiveKind::LodGames7 => ("GameMMVII", "maps"),
+        ArchiveKind::LodMM8 => ("MMVIII", "language"),
+        ArchiveKind::LodGames7 => ("GameMMVI", "maps"),
         ArchiveKind::LodGames => ("GameMMVI", "maps"),
         ArchiveKind::LodChapter7 => ("MMVII", "chapter"),
         ArchiveKind::LodChapter => ("MMVI", "chapter"),
@@ -935,7 +942,63 @@ fn kind_to_mm_strings(kind: ArchiveKind) -> (&'static str, &'static str) {
     }
 }
 
+// Description field as in the real game files / RSLod's LodDescriptions.
+fn kind_to_mm_description(kind: ArchiveKind) -> &'static str {
+    match kind {
+        ArchiveKind::LodBitmaps => "Bitmaps for MMVI.",
+        ArchiveKind::LodIcons => "Icons for MMVI.",
+        ArchiveKind::LodSprites => "Sprites for MMVI.",
+        ArchiveKind::LodMM8 => "Language for MMVIII.",
+        ArchiveKind::LodGames7 | ArchiveKind::LodGames => "Maps for MMVI",
+        ArchiveKind::LodChapter7 => "newmaps for MMVII",
+        ArchiveKind::LodChapter => "newmaps for MMVI",
+        _ => "",
+    }
+}
+
 /// Compress data with zlib.
+// ---- parallel pre-compression ----------------------------------------
+// Compressing entries one-by-one serializes the dominant cost of archive
+// creation. precompress_files() zlib-compresses every input file on all
+// cores up front (rayon); the per-file add paths then take the ready
+// blob from this content-keyed cache via zlib_compress_cached(), so the
+// archive bytes are identical to a serial run.
+
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
+static PRECOMP: OnceLock<Mutex<HashMap<Vec<u8>, Vec<u8>>>> = OnceLock::new();
+
+pub fn precompress_files(paths: &[String]) {
+    use rayon::prelude::*;
+    let computed: Vec<(Vec<u8>, Vec<u8>)> = paths
+        .par_iter()
+        .filter_map(|p| {
+            let data = fs::read(p).ok()?;
+            let compressed = zlib_compress(&data).ok()?;
+            Some((data, compressed))
+        })
+        .collect();
+    let m = PRECOMP.get_or_init(|| Mutex::new(HashMap::new()));
+    m.lock().unwrap().extend(computed);
+}
+
+pub fn zlib_compress_cached(data: &[u8]) -> io::Result<Vec<u8>> {
+    if let Some(m) = PRECOMP.get() {
+        if let Some(c) = m.lock().unwrap().get(data) {
+            return Ok(c.clone());
+        }
+    }
+    zlib_compress(data)
+}
+
+/// Archive kinds whose add path zlib-compresses the raw file bytes —
+/// the ones precompress_files() can help.
+pub fn kind_precompressible(kind: ArchiveKind) -> bool {
+    kind_has_tmmlodfile_header(kind) || kind_is_games_lod(kind) || kind == ArchiveKind::LodHeroes
+}
+// -----------------------------------------------------------------------
+
 pub fn zlib_compress(data: &[u8]) -> io::Result<Vec<u8>> {
     Ok(compress_to_vec_zlib(data, 6))
 }
@@ -992,7 +1055,7 @@ pub fn lod_add_file(archive: &mut LodArchive, file_path: &str) -> io::Result<()>
         });
     } else if archive.kind == ArchiveKind::LodHeroes {
         // H3: compress if beneficial, store packed data directly
-        let compressed = zlib_compress(&file_data)?;
+        let compressed = zlib_compress_cached(&file_data)?;
         let (stored_data, unpacked_size) = if compressed.len() < file_data.len() {
             (compressed, file_data.len() as u32)
         } else {
