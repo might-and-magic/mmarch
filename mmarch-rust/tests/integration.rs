@@ -1887,6 +1887,46 @@ fn test_help_output() {
     }
 }
 
+#[test]
+fn test_help_aliases() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("help_alias_{}", label));
+        let (expected, _, ok) = run_in(bin, &dir, &["help"]);
+        assert!(ok, "[{}] help", label);
+        for alias in ["--help", "-h", "h"] {
+            let (stdout, _, ok) = run_in(bin, &dir, &[alias]);
+            assert!(ok, "[{}] `{}` should succeed", label, alias);
+            assert_eq!(stdout, expected, "[{}] `{}` should print the same help", label, alias);
+        }
+        cleanup(&dir);
+    }
+}
+
+/// Rust binary only: `version` is a Rust-only command, the Delphi
+/// implementation does not have it.
+#[test]
+fn test_version_output() {
+    let dir = temp_dir("version");
+    let bin = PathBuf::from(env!("CARGO_BIN_EXE_mmarch"));
+    let (expected, _, ok) = run_in(&bin, &dir, &["version"]);
+    assert!(ok, "version should succeed");
+
+    // bare version number only: no program name, no leading `v`, e.g. `6.0.1`
+    let v = expected.trim();
+    assert_eq!(v, env!("CARGO_PKG_VERSION"), "should report the crate version");
+    let parts: Vec<&str> = v.split('.').collect();
+    assert_eq!(parts.len(), 3, "expected MAJOR.MINOR.PATCH, got {:?}", v);
+    assert!(parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())),
+            "version parts should be numeric, got {:?}", v);
+
+    for alias in ["--version", "-v", "v"] {
+        let (stdout, _, ok) = run_in(&bin, &dir, &[alias]);
+        assert!(ok, "`{}` should succeed", alias);
+        assert_eq!(stdout, expected, "`{}` should print the same version", alias);
+    }
+    cleanup(&dir);
+}
+
 // ===========================================================================
 // F: Extract specific file
 // ===========================================================================

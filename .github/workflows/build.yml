@@ -145,10 +145,6 @@ jobs:
             esac
           done
 
-          # The original Delphi build (32-bit), prebuilt from the repo;
-          # released for reference/legacy use, not used by npm
-          cp mmarch-delphi/mmarch.exe ./mmarch-delphi.exe
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -157,7 +153,7 @@ jobs:
           body: |
             ## Downloads
 
-            All binaries are the Rust implementation, except `mmarch-delphi.exe` (the original Delphi implementation, kept for reference).
+            All binaries are the Rust implementation. The original Delphi implementation is frozen at [v5.0.0](https://github.com/might-and-magic/mmarch/releases/tag/v5.0.0) and is not part of this release.
 
             | Platform | File |
             |----------|------|
@@ -167,12 +163,10 @@ jobs:
             | Linux ia32 | `mmarch-linux-ia32` |
             | macOS Intel | `mmarch-darwin-x64` |
             | macOS Apple Silicon | `mmarch-darwin-arm64` |
-            | Windows (Delphi build, unchanged since v5.0.0) | `mmarch-delphi.exe` |
 
-            Also available via npm: `npm install -g mmarch`
+            Also available via `npm install -g mmarch` and `cargo install mmarch`
           files: |
             mmarch.exe
-            mmarch-delphi.exe
             mmarch-linux-x64
             mmarch-linux-arm64
             mmarch-linux-ia32
@@ -196,8 +190,25 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
+      # belt and braces: guarantee npm >= 11.5.1 whatever the image ships
+      - run: npm install -g npm@latest
+
       - name: Publish
         working-directory: mmarch-npm
         run: |
           npm --version
           npm publish --provenance --access public
+
+  crates:
+    name: Publish crates.io
+    runs-on: ubuntu-latest
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish
+        working-directory: mmarch-rust
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

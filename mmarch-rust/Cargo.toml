@@ -1,10 +1,16 @@
 [package]
 name = "mmarch"
-version = "6.0.0"
+version = "6.0.1"
 edition = "2021"
-description = "Command line tool to handle Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files)"
+description = "Command line tool to handle Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows, Linux and macOS"
+authors = ["Tom Chen <tomchen.org@gmail.com>"]
 repository = "https://github.com/might-and-magic/mmarch"
+homepage = "https://github.com/might-and-magic/mmarch"
 license = "MIT"
+readme = "../README.md"
+keywords = ["might-and-magic", "heroes", "lod", "archive", "game-modding"]
+categories = ["command-line-utilities", "games"]
+exclude = ["tests/"]
 
 [dependencies]
 miniz_oxide = "0.7"

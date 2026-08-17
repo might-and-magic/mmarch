@@ -14,7 +14,7 @@ use std::fs;
 use std::io;
 use std::sync::OnceLock;
 
-const MMARCH_VERSION: &str = "6.0.0";
+const MMARCH_VERSION: &str = "6.0.1";
 const MMARCH_URL: &str = "https://github.com/might-and-magic/mmarch";
 
 // ============================================================
@@ -161,8 +161,14 @@ fn main() {
         "diff-files-to-nsis" | "df2n" => cmd_diff_files_to_any(&args, true),
         "diff-files-to-batch" | "df2b" => cmd_diff_files_to_any(&args, false),
         "diff-add-keep" | "dak" => check_archive_arg(&args).and_then(|_| cmd_diff_add_keep(&args)),
+        // `--help`/`-h` and `--version`/`-v` also land here: the leading
+        // dashes are stripped by trim_char_left above
         "help" | "h" | "" => {
             help(false);
+            Ok(())
+        }
+        "version" | "v" => {
+            println!("{}", MMARCH_VERSION);
             Ok(())
         }
         _ => Err(io::Error::new(
@@ -940,7 +946,7 @@ fn help(short: bool) {
     println!("mmarch Version {} Usage:", MMARCH_VERSION);
     println!();
     println!("mmarch extract <ARCHIVE_FILE> <FOLDER> [FILE_TO_EXTRACT_1] [FILE_TO_EXTRACT_2] [...]");
-    println!("mmarch list <ARCHIVE_FILE> [SEPARATOR]");
+    println!("mmarch list <ARCHIVE_FILE> [\"SEPARATOR\"]");
     println!("mmarch add <ARCHIVE_FILE> <FILE_TO_ADD_1> [FILE_TO_ADD_2] [...]");
     println!("mmarch delete <ARCHIVE_FILE> <FILE_TO_DELETE_1> [FILE_TO_DELETE_2] [...]");
     println!("mmarch rename <ARCHIVE_FILE> <OLD_FILE_NAME> <NEW_FILE_NAME>");
@@ -957,6 +963,7 @@ fn help(short: bool) {
     println!("mmarch checksum <ARCHIVE_FILE> --v[all] <name1:HASH1> [name2:HASH2] [...]");
     println!("mmarch optimize <ARCHIVE_FILE>");
     println!("mmarch help");
+    println!("mmarch version");
     println!();
     println!("Global option: --ec {{strict|normal|loose}}  (default: normal)");
 
@@ -965,6 +972,8 @@ fn help(short: bool) {
         println!("(`<>`: required; `[]`: optional; `|`: or):");
         println!();
         println!("- Initial letter of the first argument can be used (e.g. `e` for `extract`)");
+        println!("- Leading dashes on the first argument are accepted (e.g. `--help`, `-h`, `--version`, `-v`)");
+        println!("- `mmarch version` prints the bare version number (e.g. `{}`)", MMARCH_VERSION);
         println!("- File names are case-insensitive");
         println!("- --ec controls exit code behavior:");
         println!("    strict: all errors return exit code 1");
