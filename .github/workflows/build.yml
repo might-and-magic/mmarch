@@ -190,9 +190,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # npm >= 11.5 required: older npm signs provenance but does not
+          # do the OIDC trusted-publishing token exchange (publish then
+          # fails as an unauthenticated PUT, masked as E404)
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Publish
         working-directory: mmarch-npm
-        run: npm publish --provenance --access public
+        run: |
+          npm --version
+          npm publish --provenance --access public
