@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 mod archive;
 mod checksum;
+mod image;
 mod compare;
 mod lod;
 mod path_utils;
@@ -14,7 +15,7 @@ use std::fs;
 use std::io;
 use std::sync::OnceLock;
 
-const MMARCH_VERSION: &str = "6.0.1";
+const MMARCH_VERSION: &str = "7.0.0";
 const MMARCH_URL: &str = "https://github.com/might-and-magic/mmarch";
 
 // ============================================================
@@ -100,8 +101,14 @@ impl DynArchive {
     }
 
     fn add_file(&mut self, file_path: &str) -> io::Result<()> {
+        self.add_file_with_palette(file_path, None)
+    }
+
+    /// `palette` is the `/p PALETTE_INDEX` a `.bmp` can be added with; only a
+    /// LOD that stores pictures has any use for it.
+    fn add_file_with_palette(&mut self, file_path: &str, palette: Option<i32>) -> io::Result<()> {
         match self {
-            DynArchive::Lod(a) => lod::lod_add_file(a, file_path),
+            DynArchive::Lod(a) => lod::lod_add_file_with_palette(a, file_path, palette),
             DynArchive::Snd(a) => snd::snd_add_file(a, file_path),
             DynArchive::Vid(a) => vid::vid_add_file(a, file_path),
         }
@@ -317,9 +324,14 @@ fn extract_all(arch: &dyn Archive, folder: &str, ext: &str) {
 
     // per-entry decompression is independent -> extract on all cores;
     // errors are collected and reported afterwards in entry order
+    let claims = std::sync::Mutex::new(std::collections::HashMap::new());
     let mut errors: Vec<(usize, io::Error)> = indices
         .par_iter()
-        .filter_map(|&i| extract_entry_to_folder(arch, i, folder).err().map(|e| (i, e)))
+        .filter_map(|&i| {
+            extract_entry_to_folder_guarded(arch, i, folder, Some(&claims))
+                .err()
+                .map(|e| (i, e))
+        })
         .collect();
     errors.sort_by_key(|(i, _)| *i);
     for (i, e) in errors {
@@ -346,13 +358,36 @@ fn check_extracted_ext_match(arch: &dyn Archive, index: usize, requested_ext: &s
 }
 
 fn extract_entry_to_folder(arch: &dyn Archive, index: usize, folder: &str) -> io::Result<()> {
+    extract_entry_to_folder_guarded(arch, index, folder, None)
+}
+
+/// Extract one entry. `claims` (when extracting several entries at once) makes
+/// duplicate in-archive names resolve the way the Delphi version's sequential
+/// loop does — the highest index wins — instead of depending on which rayon
+/// worker happens to finish last.
+fn extract_entry_to_folder_guarded(
+    arch: &dyn Archive,
+    index: usize,
+    folder: &str,
+    claims: Option<&std::sync::Mutex<std::collections::HashMap<String, usize>>>,
+) -> io::Result<()> {
     let _ = create_dir_recur(folder);
-    let entry = &arch.entries()[index];
     let data = arch.read_entry_data(index)?;
 
-    // Determine extracted file name (may depend on data for palette detection)
-    let extracted_name = get_extracted_name(arch.kind(), &entry.name, Some(&data));
+    // Determine extracted file name (the archive knows the naming rule)
+    let extracted_name = arch.get_extracted_name(index);
     let dest_path = format!("{}{}", with_trailing_slash(folder), extracted_name);
+    if let Some(claims) = claims {
+        let mut claims = claims.lock().unwrap();
+        match claims.get(&extracted_name) {
+            Some(&winner) if winner > index => return Ok(()),
+            _ => {
+                claims.insert(extracted_name, index);
+            }
+        }
+        fs::write(&dest_path, &data)?;
+        return Ok(());
+    }
     fs::write(&dest_path, &data)?;
     Ok(())
 }
@@ -458,13 +493,13 @@ fn add_proc(arch: &mut DynArchive, args: &[String], from: usize) -> io::Result<(
                 // Check for /p PALETTE_INDEX
                 if i + 2 < args.len() && args[i + 1].eq_ignore_ascii_case("/p") {
                     // Palette index specified
-                    let _palette_index: i32 = args[i + 2].parse().map_err(|_| {
+                    let palette_index: i32 = args[i + 2].parse().map_err(|_| {
                         io::Error::new(
                             io::ErrorKind::InvalidInput,
                             format!("Invalid palette index: `{}`", args[i + 2]),
                         )
                     })?;
-                    if let Err(e) = arch.add_file(file_path) {
+                    if let Err(e) = arch.add_file_with_palette(file_path, Some(palette_index)) {
                         eprintln!("File `{}` error: {}", beautify_path(file_path), e);
                     }
                     i += 2;
@@ -655,7 +690,12 @@ fn cmd_merge(args: &[String]) -> io::Result<()> {
     // (e.g., TMMLodFile headers for bitmaps/icons/MM8 LODs).
     let entries2 = arch2.as_archive().entries().to_vec();
     for (i, entry) in entries2.iter().enumerate() {
-        let data = arch2.as_archive().read_entry_data(i)?;
+        // Merging is a byte-level move (MMArchMain.pas merge -> TRSMMFiles
+        // .MergeTo copies the stored blobs as they are), so an entry that will
+        // not decode is not a reason to abandon the merge. The decoded copy is
+        // only carried along so a later read in this same run does not have to
+        // go back to disk.
+        let data = arch2.as_archive().read_entry_data(i).ok();
 
         // Read raw stored bytes from source archive
         let raw_data = {
@@ -678,7 +718,8 @@ fn cmd_merge(args: &[String]) -> io::Result<()> {
             size: entry.size,
             unpacked_size: entry.unpacked_size,
             data: Some(raw_data),
-            original_data: Some(data),
+            original_data: data,
+            packed: false,
         });
     }
 

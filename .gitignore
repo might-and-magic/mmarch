@@ -23,3 +23,7 @@ Thumbs.db
 # General
 log/
 *.log
+
+# Python bytecode (tests/reference tooling)
+__pycache__/
+*.pyc

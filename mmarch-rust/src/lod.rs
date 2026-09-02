@@ -1,4 +1,4 @@
-use crate::archive::{Archive, ArchiveEntry, ArchiveKind};
+use crate::archive::{Archive, ArchiveEntry, ArchiveKind, TmmClass};
 use miniz_oxide::deflate::compress_to_vec_zlib;
 use miniz_oxide::inflate::decompress_to_vec_zlib;
 use std::fs::{self, File};
@@ -13,12 +13,22 @@ pub struct LodArchive {
     pub header_data: Vec<u8>, // raw header bytes for faithful rewrite
     pub data_start: u64,
     pub item_size: u32, // 32 for most, 76 for MM8
+    /// What each entry's TMMLodFile header says it is. Worked out in one pass
+    /// the first time anyone asks, because both naming and extraction want it
+    /// and re-opening the archive per entry costs more than decoding does.
+    tmm_classes: OnceLock<Vec<TmmClass>>,
 }
 
 // Heroes III LOD header: 92 bytes
 const H3_HEADER_SIZE: u64 = 92;
 const H3_ENTRY_SIZE: u32 = 32;
 const H3_NAME_SIZE: usize = 16;
+// RSPak's Options.MinFileSize for Heroes III LODs (RSLod.pas,
+// TRSLodBase.InitOptions): 92 + 10000*32, the entry table the shipped H3
+// archives reserve. TRSMMFiles.SaveAsNoBlock starts writing file data at
+// max(MinFileSize, DataStart + tableSize), so an H3 LOD written by MMArchive
+// or the Delphi mmarch always leaves that much room before the first file.
+const H3_MIN_FILE_SIZE: u64 = 320092;
 
 // MM6+ LOD header: 288 bytes (0x120)
 const MM_HEADER_SIZE: u64 = 288;
@@ -93,6 +103,19 @@ fn kind_has_tmmlodfile_header(kind: ArchiveKind) -> bool {
         kind,
         ArchiveKind::LodBitmaps | ArchiveKind::LodIcons | ArchiveKind::LodMM8
     )
+}
+
+/// RSPak's `Options.NameSize` (RSLod.pas, TRSLodBase.InitOptions): the name is
+/// repeated in front of the TMMLodFile header inside every stored blob, and
+/// extraction seeks past exactly this many bytes. MM8 uses $40, everything
+/// else $10 — reading an MM8 blob at offset $10 lands in the zero padding of
+/// the name, which makes every file look like a 768-byte palette.
+fn kind_name_size(kind: ArchiveKind) -> usize {
+    if kind == ArchiveKind::LodMM8 {
+        MM8_NAME_SIZE
+    } else {
+        MM_NAME_SIZE
+    }
 }
 
 /// Check if a kind is a games/chapter LOD.
@@ -176,6 +199,8 @@ impl LodArchive {
                 unpacked_size,
                 data: None,
                 original_data: None,
+                // GetIsPacked for a Heroes LOD: the packed-size field is set.
+                packed: packed_size != 0,
             });
         }
 
@@ -186,6 +211,7 @@ impl LodArchive {
             header_data,
             data_start,
             item_size: H3_ENTRY_SIZE,
+            tmm_classes: OnceLock::new(),
         })
     }
 
@@ -241,25 +267,22 @@ impl LodArchive {
 
         let header_data = data[..MM_HEADER_SIZE as usize].to_vec();
         let data_start = archive_start + (count as u64) * (item_size as u64);
-        let file_size = data.len() as u64;
 
-        // For bitmaps/icons/MM8 LODs, the entry table does NOT contain a reliable
-        // size field. The "size" field in the entry is actually meaningless for these
-        // formats. The real stored size must be computed from address gaps.
-        // For games/chapter LODs, the size field at offset name_size+4 is also not
-        // the stored size — unpacked_size is at name_size+8. The stored data includes
-        // a header before the compressed payload.
+        // Entry layout, as RSPak describes it through TRSMMFilesOptions
+        // (RSLod.pas, TRSLodBase.InitOptions):
         //
-        // We read addresses first, then compute sizes from gaps.
-
-        struct RawEntry {
-            name: String,
-            addr: u64,       // absolute address in file
-            entry_size: u32, // the "size" field from the entry table
-            unpacked: u32,   // the "unpacked_size" field from the entry table
-        }
-
-        let mut raw_entries: Vec<RawEntry> = Vec::with_capacity(count);
+        //     name[NameSize]        NameSize = $40 for MM8, $10 otherwise
+        //     addr   at NameSize    relative to ArchiveStart (AddrStart)
+        //     size   at NameSize+4  the stored (on-disk) size of the entry
+        //     unused at NameSize+8  always 0 in real archives
+        //
+        // RSPak names that second field `UnpackedSizeOffset` and leaves
+        // `SizeOffset` at -1, so TRSMMFiles.GetSize falls through to it: for
+        // every MM LOD it IS the stored size, and IsPacked is always false
+        // (both PackedSizeOffset and SizeOffset are -1 — see GetIsPacked).
+        // Compression is described by the per-entry data header instead
+        // (TMMLodFile / TMM6GamesFile), not by the entry table.
+        let mut entries: Vec<ArchiveEntry> = Vec::with_capacity(count);
         for i in 0..count {
             let entry_offset = archive_start as usize + i * item_size as usize;
             if entry_offset + item_size as usize > data.len() {
@@ -268,70 +291,18 @@ impl LodArchive {
             let name = read_fixed_string(data, entry_offset, name_size);
             let addr_off = name_size;
             let addr = read_u32_le(data, entry_offset + addr_off);
-            let entry_size_field = read_u32_le(data, entry_offset + addr_off + 4);
+            let stored_size = read_u32_le(data, entry_offset + addr_off + 4);
             let unpacked = read_u32_le(data, entry_offset + addr_off + 8);
 
-            raw_entries.push(RawEntry {
+            entries.push(ArchiveEntry {
                 name,
-                addr: archive_start + addr as u64,
-                entry_size: entry_size_field,
-                unpacked,
+                offset: archive_start + addr as u64,
+                size: stored_size,
+                unpacked_size: unpacked,
+                data: None,
+                original_data: None,
+                packed: false,
             });
-        }
-
-        let mut entries = Vec::with_capacity(raw_entries.len());
-
-        if kind_has_tmmlodfile_header(kind) {
-            // For bitmaps/icons/MM8: compute size from address gaps
-            for i in 0..raw_entries.len() {
-                let re = &raw_entries[i];
-                let next_addr = if i + 1 < raw_entries.len() {
-                    raw_entries[i + 1].addr
-                } else {
-                    file_size
-                };
-                let stored_size = (next_addr - re.addr) as u32;
-                entries.push(ArchiveEntry {
-                    name: re.name.clone(),
-                    offset: re.addr,
-                    size: stored_size,
-                    unpacked_size: re.unpacked,
-                    data: None,
-                original_data: None,
-                });
-            }
-        } else if kind_is_games_lod(kind) {
-            // For games LODs: compute size from address gaps too, since the
-            // entry's size field is not the stored size for compressed files
-            for i in 0..raw_entries.len() {
-                let re = &raw_entries[i];
-                let next_addr = if i + 1 < raw_entries.len() {
-                    raw_entries[i + 1].addr
-                } else {
-                    file_size
-                };
-                let stored_size = (next_addr - re.addr) as u32;
-                entries.push(ArchiveEntry {
-                    name: re.name.clone(),
-                    offset: re.addr,
-                    size: stored_size,
-                    unpacked_size: re.unpacked,
-                    data: None,
-                original_data: None,
-                });
-            }
-        } else {
-            // Sprites or unknown — use entry fields directly
-            for re in &raw_entries {
-                entries.push(ArchiveEntry {
-                    name: re.name.clone(),
-                    offset: re.addr,
-                    size: re.entry_size,
-                    unpacked_size: re.unpacked,
-                    data: None,
-                original_data: None,
-                });
-            }
         }
 
         Ok(LodArchive {
@@ -341,7 +312,49 @@ impl LodArchive {
             header_data,
             data_start,
             item_size,
+            tmm_classes: OnceLock::new(),
         })
+    }
+
+    /// Read every entry's TMMLodFile header in one pass over the archive.
+    fn read_tmm_classes(&self) -> Vec<TmmClass> {
+        let name_size = kind_name_size(self.kind);
+        let want = name_size + TMMLODFILE_HEADER_SIZE;
+        let mut file = File::open(&self.path).ok();
+        let mut head = vec![0u8; want];
+        self.entries
+            .iter()
+            .map(|entry| {
+                let bytes: &[u8] = match entry.data.as_deref() {
+                    Some(d) => d,
+                    None => {
+                        let f = match file.as_mut() {
+                            Some(f) => f,
+                            None => return TmmClass::Plain,
+                        };
+                        if (entry.size as usize) < want
+                            || f.seek(SeekFrom::Start(entry.offset)).is_err()
+                            || f.read_exact(&mut head).is_err()
+                        {
+                            return TmmClass::Plain;
+                        }
+                        &head
+                    }
+                };
+                if bytes.len() < want {
+                    return TmmClass::Plain;
+                }
+                if read_i32_le(bytes, name_size) != 0 {
+                    TmmClass::Bmp
+                } else if read_i32_le(bytes, name_size + 4) == 0
+                    && entry.size as usize >= 768 + want
+                {
+                    TmmClass::Act
+                } else {
+                    TmmClass::Plain
+                }
+            })
+            .collect()
     }
 
     fn name_size(&self) -> usize {
@@ -410,33 +423,149 @@ fn detect_mm_kind(version_str: &str, lod_type: &str) -> ArchiveKind {
 /// Read raw bytes from the archive file for a given entry.
 fn read_raw_entry(path: &str, entry: &ArchiveEntry) -> io::Result<Vec<u8>> {
     let mut f = File::open(path)?;
+    let file_len = f.metadata()?.len();
+    // Check before allocating: a corrupt entry table would otherwise reserve
+    // its bogus size (up to 4 GB) only to fail the read afterwards.
+    if entry.offset > file_len || entry.size as u64 > file_len - entry.offset {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "entry claims {} bytes at offset {}, past the end of the {}-byte archive",
+                entry.size, entry.offset, file_len
+            ),
+        ));
+    }
     f.seek(SeekFrom::Start(entry.offset))?;
     let mut buf = vec![0u8; entry.size as usize];
     f.read_exact(&mut buf)?;
     Ok(buf)
 }
 
+/// Palettes from the `bitmaps.lod` archives sitting next to `archive_path`.
+///
+/// RSLod.pas TRSLod.LoadBitmapsLods collects `bitmaps.lod` itself plus every
+/// `*.bitmaps.lod` in the same directory, and RSMMArchivesFind then searches
+/// them from the last one backwards — so a patch archive's palette wins over
+/// the base game's. Sprites need this because their entry only names a
+/// palette; the 768 bytes are somewhere else entirely.
+fn sibling_palettes(archive_path: &str) -> std::sync::Arc<HashMap<u16, Vec<u8>>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, std::sync::Arc<HashMap<u16, Vec<u8>>>>>> =
+        OnceLock::new();
+    let dir = crate::path_utils::get_file_dir(archive_path);
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(hit) = cache.lock().unwrap().get(&dir) {
+        return hit.clone();
+    }
+    // Built outside the lock: loading an archive re-enters this module.
+    let built = std::sync::Arc::new(load_sibling_palettes(&dir));
+    cache
+        .lock()
+        .unwrap()
+        .entry(dir)
+        .or_insert(built)
+        .clone()
+}
+
+fn load_sibling_palettes(dir: &str) -> HashMap<u16, Vec<u8>> {
+    let mut out = HashMap::new();
+    let read_dir = match fs::read_dir(if dir.is_empty() { "." } else { dir }) {
+        Ok(d) => d,
+        Err(_) => return out,
+    };
+    let mut lods: Vec<String> = Vec::new();
+    let mut base: Option<String> = None;
+    for e in read_dir.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        let lower = name.to_lowercase();
+        if lower == "bitmaps.lod" {
+            base = Some(name);
+        } else if lower.ends_with(".bitmaps.lod") {
+            lods.push(name);
+        }
+    }
+    lods.sort();
+    // base first, patches after, so the later insert wins
+    let ordered = base.into_iter().chain(lods);
+    for name in ordered {
+        let path = format!("{}{}", crate::path_utils::with_trailing_slash(dir), name);
+        let lod = match LodArchive::load(&path) {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        for i in 0..lod.entries.len() {
+            let index = match palette_index_of(&lod.entries[i].name) {
+                Some(v) => v,
+                None => continue,
+            };
+            if let Ok(data) = lod.read_entry_data(i) {
+                if data.len() >= 768 {
+                    out.insert(index, data[..768].to_vec());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Turn a sprites.lod entry into a .bmp, the way TRSLod.DoExtract does.
+/// `Ok(None)` means the palette the sprite names could not be found, which is
+/// not an error: the Delphi CLI ends up writing the stored bytes in that case
+/// too, because its extract loop falls back to a raw extraction.
+fn extract_sprite(raw: &[u8], name: &str, archive_path: &str) -> io::Result<Option<Vec<u8>>> {
+    let (hdr, rows) = crate::image::decode_sprite(raw, MM_NAME_SIZE)?;
+    // RSLodEdit.SpritePaletteFixup, applied before the palette is looked up.
+    let at = MM_NAME_SIZE - 4;
+    let palette_index =
+        crate::image::fix_sprite_palette(name, &raw[at..at + crate::image::SPRITE_HEADER_SIZE], hdr.palette);
+    if palette_index < 0 {
+        return Ok(None);
+    }
+    let palettes = sibling_palettes(archive_path);
+    let palette = match palettes.get(&(palette_index as u16)) {
+        Some(p) => p.clone(),
+        None => return Ok(None),
+    };
+    Ok(Some(crate::image::write_bmp8(&crate::image::Indexed {
+        width: hdr.width as u32,
+        height: hdr.height as u32,
+        rows,
+        palette,
+    })))
+}
+
 /// Extract file data from a bitmaps/icons/MM8 LOD entry.
 /// The stored format is: 16-byte name + 32-byte TMMLodFile header + compressed data.
 /// For non-BMP files (BmpSize==0): decompress DataSize bytes using zlib.
 /// For BMP files (BmpSize!=0): return raw pixel data + palette (treated as raw).
-fn extract_tmmlodfile(raw: &[u8]) -> io::Result<Vec<u8>> {
-    if raw.len() < TMMLODFILE_NAME_SIZE + TMMLODFILE_HEADER_SIZE {
+fn extract_tmmlodfile(raw: &[u8], name_size: usize, name: &str) -> io::Result<Vec<u8>> {
+    if raw.len() < name_size + TMMLODFILE_HEADER_SIZE {
         // Too small for header — return as-is
         return Ok(raw.to_vec());
     }
 
-    let hdr_start = TMMLODFILE_NAME_SIZE;
+    let hdr_start = name_size;
     let bmp_size = read_i32_le(raw, hdr_start);
-    let data_size = read_i32_le(raw, hdr_start + 4) as usize;
-    let unp_size = read_i32_le(raw, hdr_start + 24) as usize;
+    // TMMLodFile stores these as signed Int32. A negative one is nonsense, and
+    // casting it to usize would turn it into a request for exabytes.
+    let (data_size, unp_size) = match (
+        usize::try_from(read_i32_le(raw, hdr_start + 4)),
+        usize::try_from(read_i32_le(raw, hdr_start + 24)),
+    ) {
+        (Ok(d), Ok(u)) => (d, u),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "TMMLodFile header has a negative size field",
+            ))
+        }
+    };
 
-    let payload_start = TMMLODFILE_NAME_SIZE + TMMLODFILE_HEADER_SIZE;
+    let payload_start = name_size + TMMLODFILE_HEADER_SIZE;
 
     if bmp_size == 0 {
-        // Non-image file
+        // Palette (.act): RSLod.pas TRSLod.DoExtract takes the 768 bytes right
+        // after the header when DataSize is 0 and the blob is big enough.
         if data_size == 0 {
-            // Palette file (.act) — 768 bytes after header
             if raw.len() >= payload_start + 768 {
                 return Ok(raw[payload_start..payload_start + 768].to_vec());
             }
@@ -450,19 +579,26 @@ fn extract_tmmlodfile(raw: &[u8]) -> io::Result<Vec<u8>> {
                 "TMMLodFile data_size exceeds available data",
             ));
         }
-        let compressed = &raw[payload_start..payload_start + data_size];
-        if unp_size > 0 && data_size != unp_size {
-            // Decompress
-            zlib_decompress(compressed)
+        // RSLod.pas TRSLod.Unzip: UnpSize == 0 is the "stored raw" marker;
+        // anything else is a zlib stream read until UnpSize bytes come out.
+        let out = if unp_size > 0 {
+            zlib_decompress_bounded(&raw[payload_start..], unp_size)?
         } else {
-            // Not actually compressed
-            Ok(compressed.to_vec())
+            raw[payload_start..payload_start + data_size].to_vec()
+        };
+        // .str entries hold NUL-separated lines; TRSLod.UnpackStr turns each
+        // NUL into a CRLF on the way out (PackStr reverses it on the way in).
+        if crate::path_utils::get_file_ext(name).eq_ignore_ascii_case(".str") {
+            Ok(str_nul_to_crlf(&out))
+        } else {
+            Ok(out)
         }
     } else {
-        // Bitmap image: pixel data (possibly compressed) + 768-byte palette
-        // For simplicity, we store/extract BMP files the same as non-BMP:
-        // the raw payload after header is DataSize bytes of pixel data + 768 palette.
-        // We return the compressed pixel data decompressed + palette appended.
+        // A texture or icon. RSLod.pas TRSLod.UnpackBitmap: the pixels are
+        // BmpWidth x BmpHeight palette indices behind the header, and the
+        // 768-byte palette sits right after the compressed data. Textures with
+        // mipmaps decompress to more than BmpWidth*BmpHeight bytes — the extra
+        // levels follow the base image and are not part of the picture.
         if data_size == 0 {
             return Ok(raw[payload_start..].to_vec());
         }
@@ -472,24 +608,39 @@ fn extract_tmmlodfile(raw: &[u8]) -> io::Result<Vec<u8>> {
                 "TMMLodFile bitmap data_size exceeds available data",
             ));
         }
-        let pixel_data_compressed = &raw[payload_start..payload_start + data_size];
+        let width = read_i16_le(raw, hdr_start + 8) as i32;
+        let height = read_i16_le(raw, hdr_start + 10) as i32;
         let palette_start = payload_start + data_size;
 
-        let pixel_data = if unp_size > 0 && data_size != unp_size as usize {
-            zlib_decompress(pixel_data_compressed)?
+        let pixel_data = if unp_size > 0 {
+            zlib_decompress_bounded(&raw[payload_start..], unp_size)?
         } else {
-            pixel_data_compressed.to_vec()
+            raw[payload_start..payload_start + data_size].to_vec()
         };
 
-        // Append palette if present
-        if palette_start + 768 <= raw.len() {
-            let palette = &raw[palette_start..palette_start + 768];
+        let pixels_needed = (width as i64) * (height as i64);
+        if width <= 0
+            || height <= 0
+            || bmp_size as i64 != pixels_needed
+            || (pixel_data.len() as i64) < pixels_needed
+            || palette_start + 768 > raw.len()
+        {
+            // Not a picture we can describe; hand back what we decoded.
             let mut result = pixel_data;
-            result.extend_from_slice(palette);
-            Ok(result)
-        } else {
-            Ok(pixel_data)
+            if palette_start + 768 <= raw.len() {
+                result.extend_from_slice(&raw[palette_start..palette_start + 768]);
+            }
+            return Ok(result);
         }
+
+        let (w, h) = (width as usize, height as usize);
+        let rows = (0..h).map(|y| pixel_data[y * w..(y + 1) * w].to_vec()).collect();
+        Ok(crate::image::write_bmp8(&crate::image::Indexed {
+            width: w as u32,
+            height: h as u32,
+            rows,
+            palette: raw[palette_start..palette_start + 768].to_vec(),
+        }))
     }
 }
 
@@ -509,7 +660,12 @@ fn extract_games_lod(raw: &[u8], kind: ArchiveKind, name: &str) -> io::Result<Ve
         return Ok(raw.to_vec());
     }
 
-    let (data_size, unpacked_size) = if is7 {
+    // RSLod.pas TRSLod.DoExtract reads the header only for UnpackedSize and
+    // then calls Unzip with `FFiles.Size[i] - sz` as the compressed length —
+    // the header's own DataSize is never used. It cannot be: MM6 chapter LODs
+    // (new.lod, .mm6 saves) ship .ddm/.dlv entries whose DataSize counts the
+    // 8-byte header as well, so trusting it overruns the entry by 8 bytes.
+    let unpacked_size = if is7 {
         // Verify signatures
         let sig1 = read_u32_le(raw, 0);
         let sig2 = read_u32_le(raw, 4);
@@ -517,60 +673,112 @@ fn extract_games_lod(raw: &[u8], kind: ArchiveKind, name: &str) -> io::Result<Ve
             // Signatures don't match — treat as raw
             return Ok(raw.to_vec());
         }
-        (read_u32_le(raw, 8) as usize, read_u32_le(raw, 12) as usize)
+        read_u32_le(raw, 12) as usize
     } else {
-        (read_u32_le(raw, 0) as usize, read_u32_le(raw, 4) as usize)
+        read_u32_le(raw, 4) as usize
     };
 
-    if data_size == 0 || unpacked_size == 0 {
-        // Uncompressed — data after header is the file
-        // (UnpackedSize=0 means not compressed in Delphi convention)
-        let end = if data_size > 0 && hdr_size + data_size <= raw.len() {
-            hdr_size + data_size
+    // UnpackedSize == 0 means "stored raw" in the Delphi convention.
+    if unpacked_size == 0 {
+        return Ok(raw[hdr_size..].to_vec());
+    }
+
+    zlib_decompress_bounded(&raw[hdr_size..], unpacked_size)
+}
+
+/// Turn the NUL separators of a `.str` entry into CRLF (RSLod.pas
+/// TRSLod.UnpackStr).
+fn str_nul_to_crlf(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len());
+    for &b in data {
+        if b == 0 {
+            out.extend_from_slice(b"\r\n");
         } else {
-            raw.len()
-        };
-        return Ok(raw[hdr_size..end].to_vec());
+            out.push(b);
+        }
     }
+    out
+}
 
-    if hdr_size + data_size > raw.len() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Games LOD compressed data_size exceeds available data",
-        ));
+/// Reverse of [`str_nul_to_crlf`] (RSLod.pas TRSLod.PackStr): a `.str` file
+/// that still contains a NUL anywhere is taken to be in archive form already
+/// and left alone.
+fn str_crlf_to_nul(data: &[u8]) -> Vec<u8> {
+    if data.contains(&0) {
+        return data.to_vec();
     }
-
-    let compressed = &raw[hdr_size..hdr_size + data_size];
-    let decompressed = zlib_decompress(compressed)?;
-
-    if unpacked_size > 0 && decompressed.len() != unpacked_size {
-        // Size mismatch but we still return what we got
+    let mut out = Vec::with_capacity(data.len());
+    let mut i = 0;
+    while i < data.len() {
+        if data[i] == b'\r' && i + 1 < data.len() && data[i + 1] == b'\n' {
+            out.push(0);
+            i += 2;
+        } else {
+            out.push(data[i]);
+            i += 1;
+        }
     }
-
-    Ok(decompressed)
+    out
 }
 
 /// Build the stored blob for a file being added to a bitmaps/icons/MM8 LOD.
-/// Wraps the file data with 16-byte name + 32-byte TMMLodFile header.
+/// Wraps the file data with a NameSize-byte name + 32-byte TMMLodFile header.
 /// All files are stored as non-BMP (BmpSize=0) with zlib compression.
-fn wrap_tmmlodfile(name: &str, file_data: &[u8]) -> io::Result<Vec<u8>> {
-    let compressed = zlib_compress_cached(file_data)?;
-    let (stored_payload, _data_size, unp_size) = if compressed.len() < file_data.len() {
-        (compressed, file_data.len(), file_data.len())
+fn wrap_tmmlodfile(
+    name: &str,
+    file_data: &[u8],
+    name_size: usize,
+    is_palette: bool,
+) -> io::Result<Vec<u8>> {
+    // .str entries are stored NUL-separated (RSLod.pas TRSLod.PackStr).
+    let owned;
+    let file_data: &[u8] =
+        if crate::path_utils::get_file_ext(name).eq_ignore_ascii_case(".str") {
+            owned = str_crlf_to_nul(file_data);
+            &owned
+        } else {
+            file_data
+        };
+
+    // A palette goes in as 768 raw bytes behind a header whose DataSize is 0 —
+    // RSLod.pas TRSLod.Add calls Zip with pk = -1 for .act, which skips both
+    // the compression attempt and the DataSize write. That zero is the only
+    // thing marking the entry as a palette on the way out, so getting it wrong
+    // silently turns pal*.act into a nameless blob in MMArchive.
+    if is_palette {
+        if file_data.len() != 768 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("a palette must be exactly 768 bytes, {} has {}", name, file_data.len()),
+            ));
+        }
+        let mut buf = vec![0u8; name_size + TMMLODFILE_HEADER_SIZE + 768];
+        write_fixed_string(&mut buf, 0, name_size, name);
+        buf[name_size + TMMLODFILE_HEADER_SIZE..].copy_from_slice(file_data);
+        return Ok(buf);
+    }
+
+    // RSLod.pas TRSLod.Zip only tries zlib above 256 bytes, and keeps the raw
+    // bytes whenever the compressed stream isn't actually smaller.
+    let compressed = if file_data.len() > 256 {
+        Some(zlib_compress_cached(file_data)?)
     } else {
-        // Compression didn't help — store uncompressed
-        // When not compressed: DataSize = data length, UnpSize = 0 (signals not compressed)
-        (file_data.to_vec(), file_data.len(), 0usize)
+        None
+    };
+    let (stored_payload, unp_size) = match compressed {
+        Some(c) if c.len() < file_data.len() => (c, file_data.len()),
+        // Not compressed: DataSize = data length, UnpSize = 0 (the marker)
+        _ => (file_data.to_vec(), 0usize),
     };
 
-    let total = TMMLODFILE_NAME_SIZE + TMMLODFILE_HEADER_SIZE + stored_payload.len();
+    let total = name_size + TMMLODFILE_HEADER_SIZE + stored_payload.len();
     let mut buf = vec![0u8; total];
 
-    // Write 16-byte name
-    write_fixed_string(&mut buf, 0, TMMLODFILE_NAME_SIZE, name);
+    // Write the name, repeated in front of the header
+    write_fixed_string(&mut buf, 0, name_size, name);
 
-    // Write TMMLodFile header (32 bytes) at offset 16
-    let h = TMMLODFILE_NAME_SIZE;
+    // Write TMMLodFile header (32 bytes) right after the name
+    let h = name_size;
     // BmpSize = 0 (not a bitmap)
     write_i32_le(&mut buf, h, 0);
     // DataSize = compressed size (or raw size if not compressed)
@@ -590,9 +798,179 @@ fn wrap_tmmlodfile(name: &str, file_data: &[u8]) -> io::Result<Vec<u8>> {
     write_i32_le(&mut buf, h + 28, 0);
 
     // Write payload
-    buf[TMMLODFILE_NAME_SIZE + TMMLODFILE_HEADER_SIZE..].copy_from_slice(&stored_payload);
+    buf[name_size + TMMLODFILE_HEADER_SIZE..].copy_from_slice(&stored_payload);
 
     Ok(buf)
+}
+
+/// Wrap a picture the way RSLod.pas TRSLod.PackBitmap does: the name, a
+/// TMMLodFile header describing the image, the zlib-compressed pixels and the
+/// 768-byte palette.
+fn wrap_tmmlodfile_bitmap(
+    name: &str,
+    img: &crate::image::Indexed,
+    name_size: usize,
+    kind: ArchiveKind,
+    palette_index: i16,
+    bits: i32,
+) -> io::Result<Vec<u8>> {
+    let (w, h) = (img.width as usize, img.height as usize);
+    let bmp_size = w * h;
+    let mipmapped = bits & 2 != 0;
+
+    let mut buffer: Vec<u8> = Vec::with_capacity(if mipmapped {
+        crate::image::mipmapped_buffer_size(bmp_size)
+    } else {
+        bmp_size
+    });
+    for row in &img.rows {
+        buffer.extend_from_slice(row);
+    }
+    if mipmapped {
+        buffer.extend_from_slice(&crate::image::build_mipmaps(&img.rows, w, h, &img.palette));
+        buffer.resize(crate::image::mipmapped_buffer_size(bmp_size), 0);
+    }
+    let unpacked = buffer.len();
+
+    // TRSLod.Zip: only try zlib above 256 bytes, and keep the raw bytes when
+    // the compressed stream is not actually smaller. UnpSize == 0 is the
+    // "stored as is" marker.
+    let compressed = if unpacked > 256 {
+        Some(zlib_compress_cached(&buffer)?)
+    } else {
+        None
+    };
+    let (payload, unp_size) = match compressed {
+        Some(c) if c.len() < unpacked => (c, unpacked),
+        _ => (buffer, 0usize),
+    };
+
+    let mut out = vec![0u8; name_size + TMMLODFILE_HEADER_SIZE + payload.len() + 768];
+    write_fixed_string(&mut out, 0, name_size, name);
+    let hdr = name_size;
+    write_i32_le(&mut out, hdr, bmp_size as i32);
+    write_i32_le(&mut out, hdr + 4, payload.len() as i32);
+    write_i16_le(&mut out, hdr + 8, w as i16);
+    write_i16_le(&mut out, hdr + 10, h as i16);
+    if kind == ArchiveKind::LodBitmaps && w != 0 {
+        write_i16_le(&mut out, hdr + 20, palette_index);
+        if mipmapped {
+            let ln2 = |v: usize| -> io::Result<i16> {
+                if v.is_power_of_two() && v >= 4 {
+                    Ok(v.trailing_zeros() as i16)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("{}: a bitmaps.lod texture must be a power of 2, at least 4", name),
+                    ))
+                }
+            };
+            write_i16_le(&mut out, hdr + 12, ln2(w)?);
+            write_i16_le(&mut out, hdr + 14, ln2(h)?);
+            write_i16_le(&mut out, hdr + 16, (w - 1) as i16);
+            write_i16_le(&mut out, hdr + 18, (h - 1) as i16);
+        }
+    }
+    write_i32_le(&mut out, hdr + 24, unp_size as i32);
+    write_i32_le(&mut out, hdr + 28, bits);
+    let at = name_size + TMMLODFILE_HEADER_SIZE;
+    out[at..at + payload.len()].copy_from_slice(&payload);
+    out[at + payload.len()..].copy_from_slice(&img.palette[..768]);
+    Ok(out)
+}
+
+/// Wrap a picture as a sprites.lod entry (RSLod.pas TRSLod.PackSprite).
+fn wrap_sprite(name: &str, img: &crate::image::Indexed, palette_index: i16) -> io::Result<Vec<u8>> {
+    if palette_index <= 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "{}: failed to find matching palette in bitmaps.lod (give one with /p, or \
+                 put the palette in a [*.]bitmaps.lod next to the archive)",
+                name
+            ),
+        ));
+    }
+    let (w, h) = (img.width as usize, img.height as usize);
+    let (spans, lines, y_skip) = crate::image::pack_sprite_rows(&img.rows, w);
+
+    let compressed = if spans.len() > 256 {
+        Some(zlib_compress_cached(&spans)?)
+    } else {
+        None
+    };
+    let (payload, unp_size) = match compressed {
+        Some(c) if c.len() < spans.len() => (c, spans.len()),
+        _ => (spans, 0usize),
+    };
+
+    // 12 bytes of name, TSprite, one line record per row, then the spans.
+    let head = MM_NAME_SIZE - 4;
+    let mut out = vec![0u8; head + crate::image::SPRITE_HEADER_SIZE + lines.len() * 8 + payload.len()];
+    write_fixed_string(&mut out, 0, head, name);
+    write_u32_le(&mut out, head, payload.len() as u32);
+    write_i16_le(&mut out, head + 4, w as i16);
+    write_i16_le(&mut out, head + 6, h as i16);
+    write_i16_le(&mut out, head + 8, palette_index);
+    write_i16_le(&mut out, head + 12, y_skip);
+    write_u32_le(&mut out, head + 16, unp_size as u32);
+    let mut at = head + crate::image::SPRITE_HEADER_SIZE;
+    for rec in &lines {
+        out[at..at + 8].copy_from_slice(rec);
+        at += 8;
+    }
+    out[at..].copy_from_slice(&payload);
+    Ok(out)
+}
+
+/// Is this one of the files TRSLod.LoadBitmapsLods would collect?
+fn is_bitmaps_lod_name(path: &str) -> bool {
+    let name = crate::path_utils::get_file_name(path).to_lowercase();
+    name == "bitmaps.lod" || name.ends_with(".bitmaps.lod")
+}
+
+/// The palette index whose 768 bytes match this picture's (MMArchMain.pas
+/// getPalette -> RSMMArchivesFindSamePalette).
+///
+/// RSLod.pas TRSLod.LoadBitmapsLods gathers `bitmaps.lod` and every
+/// `*.bitmaps.lod` next to the archive — **including the archive being written**
+/// when its own name matches. That is what makes
+/// `create x.bitmaps.lod mmbitmapslod . pal994.act picture.bmp` work: by the
+/// time the picture is added the palette is already in the archive, in memory,
+/// and nowhere on disk yet.
+fn match_palette(archive: &LodArchive, palette: &[u8]) -> Option<i16> {
+    let wanted = &palette[..768];
+    if is_bitmaps_lod_name(&archive.path) {
+        for (i, entry) in archive.entries.iter().enumerate() {
+            if let Some(index) = palette_index_of(&entry.name) {
+                if let Ok(data) = archive.read_entry_data(i) {
+                    if data.len() >= 768 && &data[..768] == wanted {
+                        return Some(index as i16);
+                    }
+                }
+            }
+        }
+    }
+    let table = sibling_palettes(&archive.path);
+    let mut found: Option<i16> = None;
+    for (index, bytes) in table.iter() {
+        if bytes.as_slice() == wanted {
+            // highest index wins, matching RSMMArchivesFind's backwards search
+            found = Some(found.map_or(*index as i16, |f: i16| f.max(*index as i16)));
+        }
+    }
+    found
+}
+
+/// `pal023` -> 23. RSPak looks these up with a case-insensitive FindFile, and
+/// it has to: MM8's bitmaps.lod spells them pal005, Pal586 and PAL123 alike.
+fn palette_index_of(name: &str) -> Option<u16> {
+    let lower = name.to_ascii_lowercase();
+    let digits = lower.strip_prefix("pal")?;
+    if digits.is_empty() || !digits.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
 }
 
 /// Build the stored blob for a file being added to a games/chapter LOD.
@@ -663,6 +1041,17 @@ impl Archive for LodArchive {
         &mut self.entries
     }
 
+    fn tmmlodfile_class(&self, index: usize) -> TmmClass {
+        if !kind_has_tmmlodfile_header(self.kind) {
+            return TmmClass::Plain;
+        }
+        self.tmm_classes
+            .get_or_init(|| self.read_tmm_classes())
+            .get(index)
+            .copied()
+            .unwrap_or(TmmClass::Plain)
+    }
+
     fn read_entry_data(&self, index: usize) -> io::Result<Vec<u8>> {
         let entry = &self.entries[index];
 
@@ -682,20 +1071,37 @@ impl Archive for LodArchive {
 
         // Format-specific extraction
         if kind_has_tmmlodfile_header(self.kind) {
-            extract_tmmlodfile(&raw)
+            extract_tmmlodfile(&raw, kind_name_size(self.kind), &entry.name)
         } else if kind_is_games_lod(self.kind) {
             extract_games_lod(&raw, self.kind, &entry.name)
         } else if self.kind == ArchiveKind::LodHeroes {
-            // H3: if packed, decompress
-            if entry.is_packed() {
-                zlib_decompress(&raw)
+            // H3: if packed, decompress (RawExtract copies UnpackedSize bytes)
+            let data = if entry.is_packed() {
+                zlib_decompress_bounded(&raw, entry.unpacked_size as usize)?
             } else {
-                Ok(raw)
+                raw
+            };
+            // TRSLod.DoExtract turns a .pcx into a .bmp. Heroes' "PCX" is its
+            // own thing: a 12-byte header, raw pixels, then a palette.
+            if crate::path_utils::get_file_ext(&entry.name).eq_ignore_ascii_case(".pcx") {
+                if let Ok(bmp) = crate::image::decode_pcx(&data) {
+                    return Ok(bmp);
+                }
+            }
+            Ok(data)
+        } else if self.kind == ArchiveKind::LodSprites {
+            // No palette to colour it with, or not a sprite at all — mmarch
+            // lets any file into a sprites.lod, unlike the Delphi version — so
+            // hand back the stored bytes, which is also what the Delphi CLI
+            // ends up writing when its extract loop catches the failure.
+            match extract_sprite(&raw, &entry.name, &self.path) {
+                Ok(Some(bmp)) => Ok(bmp),
+                Ok(None) | Err(_) => Ok(raw),
             }
         } else {
-            // Sprites or other: simple decompress if packed
+            // Anything else: simple decompress if packed
             if entry.is_packed() {
-                zlib_decompress(&raw)
+                zlib_decompress_bounded(&raw, entry.unpacked_size as usize)
             } else {
                 Ok(raw)
             }
@@ -720,7 +1126,8 @@ impl Archive for LodArchive {
                 out.write_all(&header)?;
 
                 // Calculate data start
-                let new_data_start = H3_HEADER_SIZE + (count as u64) * (H3_ENTRY_SIZE as u64);
+                let new_data_start = (H3_HEADER_SIZE + (count as u64) * (H3_ENTRY_SIZE as u64))
+                    .max(H3_MIN_FILE_SIZE);
 
                 // Write entries and data
                 let mut current_addr: u32 = 0;
@@ -763,6 +1170,13 @@ impl Archive for LodArchive {
                 }
 
                 out.write_all(&entry_table)?;
+                if !data_buf.is_empty() {
+                    // Leave the reserved entry-table room MinFileSize asks for.
+                    let written = H3_HEADER_SIZE + entry_table.len() as u64;
+                    if new_data_start > written {
+                        out.write_all(&vec![0u8; (new_data_start - written) as usize])?;
+                    }
+                }
                 out.write_all(&data_buf)?;
 
                 self.data_start = new_data_start;
@@ -782,7 +1196,8 @@ impl Archive for LodArchive {
                         size: raw_size,
                         unpacked_size: entry.unpacked_size,
                         data: None,
-                original_data: None,
+                        original_data: None,
+                        packed: entry.packed,
                     });
                     offset += raw_size as u64;
                 }
@@ -918,6 +1333,7 @@ impl Archive for LodArchive {
             header_data,
             data_start,
             item_size,
+            tmm_classes: OnceLock::new(),
         })
     }
 }
@@ -1009,9 +1425,92 @@ pub fn zlib_decompress(data: &[u8]) -> io::Result<Vec<u8>> {
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("zlib decompress error: {:?}", e)))
 }
 
+/// Decompress a zlib stream, stopping as soon as `expected` bytes have come
+/// out.
+///
+/// This is what RSPak does everywhere an entry header carries an unpacked size:
+/// TRSLod.Unzip and TRSMMFiles.RawExtract wrap the archive stream in a
+/// TDecompressionStream and copy exactly UnpackedSize bytes out of it. Whatever
+/// follows the deflate stream inside the entry — a bitmap palette, padding, a
+/// DataSize field that counts its own header, leftovers of a longer entry that
+/// a patcher overwrote in place — is never looked at. Handing the whole
+/// remainder of the entry to a one-shot decompressor instead rejects such
+/// entries outright.
+///
+/// The unpacked size the entry promises is the integrity check here, so the
+/// trailing Adler-32 is not verified: GOG's MM6 `Games.lod` ships `cd3.blv` and
+/// `d08.blv` with a stale checksum and ~2 KB of stale bytes behind an otherwise
+/// intact stream, and the game reads them.
+pub fn zlib_decompress_bounded(data: &[u8], expected: usize) -> io::Result<Vec<u8>> {
+    use miniz_oxide::inflate::stream::{inflate, InflateState};
+    use miniz_oxide::{DataFormat, MZFlush};
+
+    if expected == 0 {
+        return Ok(Vec::new());
+    }
+    // Never reserve a buffer the input could not possibly fill. deflate tops
+    // out around 1032:1, so anything past that is a corrupt or hostile header
+    // (a negative Int32 size field reads back as ~18 EB) and reserving it
+    // aborts the process instead of skipping the one bad entry.
+    let ceiling = data.len().saturating_mul(1032).saturating_add(1024);
+    if expected > ceiling {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "entry declares {} unpacked bytes, more than {} compressed bytes can produce",
+                expected,
+                data.len()
+            ),
+        ));
+    }
+    let truncated = |got: usize| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "zlib stream ended after {} of the {} bytes the entry declares",
+                got, expected
+            ),
+        )
+    };
+
+    // The whole entry is already in memory and the output size is known, so a
+    // single Finish call is enough. That is also the only path miniz_oxide
+    // decompresses straight into the caller's buffer on, instead of through
+    // its ring buffer.
+    let mut out = vec![0u8; expected];
+    let mut state = InflateState::new_boxed(DataFormat::ZLibIgnoreChecksum);
+    let r = inflate(&mut state, data, &mut out, MZFlush::Finish);
+    if r.bytes_written >= expected {
+        // Done, or the stream had more to give and we stopped at `expected` —
+        // either way the entry's bytes are all here.
+        return Ok(out);
+    }
+    // Short of what the entry promised. How many bytes did come out is the
+    // useful part of the message — a stream that stops early and one that is
+    // malformed halfway both land here.
+    if r.bytes_written > 0 {
+        return Err(truncated(r.bytes_written));
+    }
+    match r.status {
+        Err(e) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("not a usable zlib stream: {:?}", e),
+        )),
+        Ok(_) => Err(truncated(0)),
+    }
+}
+
 /// Add a file to the LOD archive. The file is read from disk and stored
 /// with the appropriate format-specific wrapping.
 pub fn lod_add_file(archive: &mut LodArchive, file_path: &str) -> io::Result<()> {
+    lod_add_file_with_palette(archive, file_path, None)
+}
+
+pub fn lod_add_file_with_palette(
+    archive: &mut LodArchive,
+    file_path: &str,
+    palette_index: Option<i32>,
+) -> io::Result<()> {
     let file_data = fs::read(file_path)?;
     let file_name = crate::path_utils::get_file_name(file_path);
 
@@ -1027,13 +1526,144 @@ pub fn lod_add_file(archive: &mut LodArchive, file_path: &str) -> io::Result<()>
         file_name.clone()
     };
 
-    // Remove existing entry with same name (case-insensitive)
-    archive.entries.retain(|e| !e.name.eq_ignore_ascii_case(&in_name));
+    // Note: the entry being replaced is only removed once the new blob exists.
+    // Dropping it first means a conversion that fails — a sprite whose palette
+    // cannot be found, say — takes the old resource with it.
+
+    // RSLod.pas TRSLod.Add: a .bmp going into an archive that stores pictures is
+    // converted into that archive's image format, not filed away as bytes.
+    let is_bmp = ext.eq_ignore_ascii_case(".bmp");
+    if is_bmp
+        && matches!(
+            archive.kind,
+            ArchiveKind::LodBitmaps
+                | ArchiveKind::LodIcons
+                | ArchiveKind::LodMM8
+                | ArchiveKind::LodSprites
+                | ArchiveKind::LodHeroes
+        )
+    {
+        // Heroes archives hold 24-bit pictures too; everything else is
+        // palette indices.
+        if archive.kind == ArchiveKind::LodHeroes {
+            let stored = crate::image::pack_pcx(&crate::image::read_bmp(&file_data)?);
+            archive.entries.retain(|e| !e.name.eq_ignore_ascii_case(&in_name));
+            archive.entries.push(ArchiveEntry {
+                name: in_name,
+                offset: 0,
+                size: stored.len() as u32,
+                unpacked_size: 0,
+                data: Some(stored),
+                original_data: Some(file_data),
+                packed: false,
+            });
+            return Ok(());
+        }
+        let img = crate::image::read_bmp8(&file_data)?;
+        let stored = match archive.kind {
+            ArchiveKind::LodSprites => {
+                // TRSLod.AddBitmap: an explicit index, else the one the entry
+                // being replaced already used, else a matching palette in a
+                // neighbouring bitmaps.lod.
+                let index = palette_index
+                    .map(|p| p as i16)
+                    .or_else(|| {
+                        archive
+                            .entries
+                            .iter()
+                            .find(|e| e.name.eq_ignore_ascii_case(&in_name))
+                            .and_then(|e| read_raw_entry(&archive.path, e).ok())
+                            .and_then(|raw| {
+                                crate::image::read_sprite_header(&raw, MM_NAME_SIZE)
+                                    .ok()
+                                    .map(|(h, _)| h.palette)
+                            })
+                    })
+                    .or_else(|| match_palette(archive, &img.palette))
+                    .unwrap_or(0);
+                wrap_sprite(&in_name, &img, index)?
+            }
+            _ => {
+                // FindBitmapPalette: only bitmaps.lod carries a palette index
+                // and mipmaps; icons and MM8 store the picture plainly.
+                let (index, bits) = if archive.kind == ArchiveKind::LodBitmaps {
+                    let existing = archive
+                        .entries
+                        .iter()
+                        .find(|e| e.name.eq_ignore_ascii_case(&in_name))
+                        .and_then(|e| read_raw_entry(&archive.path, e).ok());
+                    let old_palette = existing.as_ref().and_then(|raw| {
+                        (raw.len() >= MM_NAME_SIZE + TMMLODFILE_HEADER_SIZE)
+                            .then(|| read_i16_le(raw, MM_NAME_SIZE + 20))
+                    });
+                    let old_bits = existing.as_ref().and_then(|raw| {
+                        (raw.len() >= MM_NAME_SIZE + TMMLODFILE_HEADER_SIZE)
+                            .then(|| read_i32_le(raw, MM_NAME_SIZE + 28))
+                    });
+                    let index = match palette_index
+                        .map(|p| p as i16)
+                        .or(old_palette)
+                        .or_else(|| match_palette(archive, &img.palette))
+                    {
+                        Some(i) => i,
+                        // MMArchMain.pas getPalette raises here rather than
+                        // storing a texture under palette 0, which would be a
+                        // picture that renders in the wrong colours.
+                        None => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                format!(
+                                    "{}: failed to find matching palette in bitmaps.lod \
+                                     (give one with /p, or put the palette in a \
+                                     [*.]bitmaps.lod next to the archive)",
+                                    file_name
+                                ),
+                            ))
+                        }
+                    };
+                    (index, old_bits.unwrap_or(0) | 0x12)
+                } else if crate::image::palette_is_transparent(&img.palette) {
+                    (0, 512)
+                } else {
+                    (0, 0)
+                };
+                wrap_tmmlodfile_bitmap(
+                    &in_name,
+                    &img,
+                    kind_name_size(archive.kind),
+                    archive.kind,
+                    index,
+                    bits,
+                )?
+            }
+        };
+        archive.entries.retain(|e| !e.name.eq_ignore_ascii_case(&in_name));
+        archive.entries.push(ArchiveEntry {
+            name: in_name,
+            offset: 0,
+            size: stored.len() as u32,
+            unpacked_size: 0,
+            data: Some(stored),
+            original_data: Some(file_data),
+            packed: false,
+        });
+        return Ok(());
+    }
 
     // Format-specific wrapping
     if kind_has_tmmlodfile_header(archive.kind) {
+        // RSLod.pas TRSLod.Add treats a .act file as a palette, and so does a
+        // 768-byte extensionless `pal*` going into a bitmaps LOD.
+        let is_palette = ext.eq_ignore_ascii_case(".act")
+            || (ext.is_empty()
+                && archive.kind == ArchiveKind::LodBitmaps
+                && file_name.len() >= 3
+                && file_name[..3].eq_ignore_ascii_case("pal")
+                && file_data.len() == 768);
         // Wrap with TMMLodFile header
-        let stored = wrap_tmmlodfile(&in_name, &file_data)?;
+        let stored =
+            wrap_tmmlodfile(&in_name, &file_data, kind_name_size(archive.kind), is_palette)?;
+        archive.entries.retain(|e| !e.name.eq_ignore_ascii_case(&in_name));
         archive.entries.push(ArchiveEntry {
             name: in_name,
             offset: 0,
@@ -1041,10 +1671,12 @@ pub fn lod_add_file(archive: &mut LodArchive, file_path: &str) -> io::Result<()>
             unpacked_size: 0, // not used in entry table for bitmaps/icons
             data: Some(stored),
             original_data: Some(file_data),
+            packed: false,
         });
     } else if kind_is_games_lod(archive.kind) {
         // Wrap with games header for compressed types
         let (stored, unpacked_size) = wrap_games_lod(&file_data, archive.kind, &in_name)?;
+        archive.entries.retain(|e| !e.name.eq_ignore_ascii_case(&in_name));
         archive.entries.push(ArchiveEntry {
             name: in_name,
             offset: 0,
@@ -1052,6 +1684,7 @@ pub fn lod_add_file(archive: &mut LodArchive, file_path: &str) -> io::Result<()>
             unpacked_size,
             data: Some(stored),
             original_data: Some(file_data),
+            packed: false,
         });
     } else if archive.kind == ArchiveKind::LodHeroes {
         // H3: compress if beneficial, store packed data directly
@@ -1062,6 +1695,7 @@ pub fn lod_add_file(archive: &mut LodArchive, file_path: &str) -> io::Result<()>
             (file_data.clone(), 0u32)
         };
         let sz = stored_data.len() as u32;
+        archive.entries.retain(|e| !e.name.eq_ignore_ascii_case(&in_name));
         archive.entries.push(ArchiveEntry {
             name: in_name,
             offset: 0,
@@ -1069,16 +1703,19 @@ pub fn lod_add_file(archive: &mut LodArchive, file_path: &str) -> io::Result<()>
             unpacked_size,
             data: Some(stored_data),
             original_data: Some(file_data),
+            packed: unpacked_size != 0,
         });
     } else {
         // Sprites or other: store as-is
         let sz = file_data.len() as u32;
+        archive.entries.retain(|e| !e.name.eq_ignore_ascii_case(&in_name));
         archive.entries.push(ArchiveEntry {
             name: in_name,
             offset: 0,
             size: sz,
             unpacked_size: 0,
             original_data: Some(file_data.clone()),
+            packed: false,
             data: Some(file_data),
         });
     }

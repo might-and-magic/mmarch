@@ -55,8 +55,20 @@ pub fn checksum_resources(
     for i in 0..entries.len() {
         let extracted_name = archive.get_extracted_name(i);
         if matches_any_filter(&entries[i].name, &extracted_name, filters) {
-            let data = archive.read_entry_data(i)?;
-            results.push((extracted_name, crc32(&data)));
+            // A single unreadable entry must not sink the whole listing:
+            // MMArchChecksum.pas catches per entry, reports it on stderr and
+            // carries on, the same way extraction does.
+            match archive.read_entry_data(i) {
+                Ok(data) => results.push((extracted_name, crc32(&data))),
+                Err(e) => {
+                    eprintln!(
+                        "File `{}` in archive `{}` error:",
+                        crate::path_utils::beautify_path(&entries[i].name),
+                        crate::path_utils::beautify_path(archive.file_path())
+                    );
+                    eprintln!("{}", e);
+                }
+            }
         }
     }
 

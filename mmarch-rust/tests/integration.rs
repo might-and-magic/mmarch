@@ -3,6 +3,23 @@
 //! Every test runs against BOTH the Rust binary and the Delphi binary (if present).
 //! All commands are run with CWD set to the test's temp directory, using relative
 //! paths to avoid drive-letter colon issues with the Delphi binary.
+//!
+//! # Where the expected values come from
+//!
+//! Never from running mmarch and writing down what came out. Every CRC below is
+//! derived from the archive format as GrayFace's RSPak defines it
+//! (`mmarch-delphi/RSPak/Extra/RSLod.pas`) — decode the entry by hand, then
+//! assert mmarch agrees. A golden value recorded from the implementation only
+//! asserts that today's behaviour equals today's behaviour: `real_mm8loc.T.lod`
+//! carried `382A0F77` for `D07.EVT` for two releases, and that was the CRC of
+//! 768 bytes of undecoded archive bytes — the test passed for as long as the
+//! bug lasted, and failed the moment it was fixed.
+//!
+//! That includes the pictures. A texture, icon, sprite or Heroes PCX comes out
+//! as a real .bmp, and `mmarch-rust/tests/reference/rspak.py` builds the same
+//! file independently from the format — for the MM6 bats it comes out byte for
+//! byte identical to the .bmp MMArchive itself produced, kept in
+//! `tests/reference/mmarchive/`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -177,6 +194,60 @@ fn has_files_recursive(dir: &Path) -> bool {
         }
     }
     false
+}
+
+/// Parse `compare`'s listing into (marker, path) pairs, e.g. ("+", "added.txt")
+/// or ("m", "folder/icons.lod:item085v5"), with the colour escapes stripped.
+///
+/// Asserting on these instead of on "the output mentions [+] somewhere" is the
+/// difference between checking that compare ran and checking that it is right.
+fn compare_listing(stdout: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for line in stdout.lines() {
+        let mut clean = String::new();
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                // skip the CSI sequence up to its final letter
+                while let Some(n) = chars.next() {
+                    if n.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                clean.push(c);
+            }
+        }
+        let clean = clean.trim();
+        let bytes = clean.as_bytes();
+        if bytes.len() > 4 && bytes[0] == b'[' && bytes[2] == b']' && bytes[3] == b' ' {
+            out.push(((clean[1..2]).to_string(), (clean[4..]).to_string()));
+        }
+    }
+    out
+}
+
+fn assert_listed(listing: &[(String, String)], marker: &str, path: &str, label: &str) {
+    assert!(listing.iter().any(|(m, p)| m == marker && p == path),
+        "[{}] compare should report [{}] {:?}; got {:?}", label, marker, path, listing);
+}
+
+fn assert_not_listed(listing: &[(String, String)], path: &str, label: &str) {
+    assert!(!listing.iter().any(|(_, p)| p == path),
+        "[{}] compare should not mention {:?}; got {:?}", label, path, listing);
+}
+
+/// CRC-32 (the same polynomial `mmarch checksum` prints), so a test can state
+/// an expected value instead of trusting whatever mmarch wrote to disk.
+fn crc32_hex(data: &[u8]) -> String {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &b in data {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+        }
+    }
+    format!("{:08X}", crc ^ 0xFFFF_FFFF)
 }
 
 fn collect_files_recursive(dir: &Path, base: &Path) -> Vec<String> {
@@ -773,9 +844,25 @@ fn test_compare_v1_v2_folders() {
 
         let (stdout, _, ok) = run_in(bin, &dir, &["compare", "v1", "v2"]);
         assert!(ok, "[{}] compare v1 v2 should succeed", label);
-        assert!(stdout.contains("[+]"), "[{}] added: {}", label, stdout);
-        assert!(stdout.contains("[-]"), "[{}] deleted: {}", label, stdout);
-        assert!(stdout.contains("[m]"), "[{}] modified: {}", label, stdout);
+        let listing = compare_listing(&stdout);
+
+        // Plain files
+        assert_listed(&listing, "+", "added.txt", label);
+        assert_listed(&listing, "-", "deleted.txt", label);
+        assert_listed(&listing, "m", "modified.txt", label);
+        // A file present and identical in both must not show up at all
+        assert_not_listed(&listing, "unchanged.txt", label);
+
+        // Whole folders are reported as folders...
+        assert_listed(&listing, "+", "added folder文件夹/", label);
+        assert_listed(&listing, "-", "deleted folder文件夹/", label);
+        // ...and their contents are not listed again one by one
+        assert_not_listed(&listing, "deleted folder文件夹/deleted.lod", label);
+
+        // Resources inside an archive, addressed with `archive:resource`
+        assert_listed(&listing, "m", "folder w modified files/icons.lod:item085v5", label);
+        assert_listed(&listing, "+", "folder w modified files/icons.lod:item251v5a", label);
+        assert_listed(&listing, "-", "folder w modified files/icons.lod:item114v5", label);
 
         cleanup(&dir);
     }
@@ -916,8 +1003,21 @@ fn test_compare_v2_v3_folders() {
 
         let (stdout, _, ok) = run_in(bin, &dir, &["compare", "v2", "v3"]);
         assert!(ok, "[{}] compare v2 v3 succeed", label);
-        assert!(stdout.contains("[+]") || stdout.contains("[-]") || stdout.contains("[m]"),
-                "[{}] should show changes: {}", label, stdout);
+        let listing = compare_listing(&stdout);
+
+        // v3 drops what v2 added and restores the folder v2 had deleted, so
+        // the markers are the mirror image of the v1 -> v2 run.
+        assert_listed(&listing, "-", "added.txt", label);
+        assert_listed(&listing, "-", "added folder文件夹2/", label);
+        assert_listed(&listing, "+", "deleted folder文件夹/", label);
+        assert_listed(&listing, "-", "folder w modified files/modified.txt", label);
+        assert_not_listed(&listing, "unchanged.txt", label);
+
+        // Archive resources again, this time in a .lod inside an added folder
+        assert_listed(&listing, "m", "added folder文件夹/added.lod:7item071v5a", label);
+        assert_listed(&listing, "+", "added folder文件夹/added.lod:7item071v5b", label);
+        assert_listed(&listing, "m", "folder w modified files/icons.lod:chn5iconv5", label);
+        assert_listed(&listing, "+", "folder w modified files/icons.lod:chn5iconv5b", label);
 
         // NSIS
         run_ok_in(bin, &dir, &["compare", "v2", "v3", "nsis", "nsis/script.nsi", "files"]);
@@ -3594,7 +3694,7 @@ fn test_real_mmiconslod() {
         real_archive_test(bin, label, "real_icons.lod",
             &["GF-ASpell", "GF-ASpellD", "GF-Swrd"],
             &["GF-ASpell.bmp", "GF-ASpellD.bmp", "GF-Swrd.bmp"],
-            &[("GF-ASpell.bmp", "C18D8374"), ("GF-ASpellD.bmp", "E733CC78"), ("GF-Swrd.bmp", "08E423DB")],
+            &[("GF-ASpell.bmp", "2205C82B"), ("GF-ASpellD.bmp", "857A0994"), ("GF-Swrd.bmp", "2D3BE4FD")],
         );
     }
 }
@@ -3605,13 +3705,16 @@ fn test_real_mmbitmapslod() {
         real_archive_test(bin, label, "real_bitmaps.lod",
             &["HDLAV007", "HDWTR006", "pal453"],
             &["HDLAV007.bmp", "HDWTR006.bmp", "pal453.act"],
-            &[("HDLAV007.bmp", "DB3DF5C7"), ("HDWTR006.bmp", "EF1DAA04"), ("pal453.act", "C35ACC9F")],
+            &[("HDLAV007.bmp", "B3FE7A28"), ("HDWTR006.bmp", "09800FAF"), ("pal453.act", "C35ACC9F")],
         );
     }
 }
 
 #[test]
 fn test_real_mmspriteslod() {
+    // These three name palette 23391, which is in no bitmaps.lod. RSPak raises
+    // and the Delphi CLI falls back to writing the stored bytes; so does
+    // mmarch. test_real_sprite_palette below covers the decoding path.
     for (label, ref bin) in get_binaries() {
         real_archive_test(bin, label, "real_sprites.lod",
             &["Editor i1", "Editor i2", "Editor i3"],
@@ -3623,11 +3726,16 @@ fn test_real_mmspriteslod() {
 
 #[test]
 fn test_real_mm8loclod() {
+    // CRCs of the zlib payload behind each entry's 64-byte name + TMMLodFile
+    // header, i.e. what RSPak's TRSLod.DoExtract produces. The values this test
+    // shipped with until v6.0.1 (382A0F77 / 2DEED09D / BAF06A87) were the CRCs
+    // of 768 raw archive bytes each, because extraction read the header at
+    // offset $10 instead of Options.NameSize = $40.
     for (label, ref bin) in get_binaries() {
         real_archive_test(bin, label, "real_mm8loc.T.lod",
             &["D07.EVT", "d16.EVT", "d17.EVT"],
             &["D07.EVT", "d16.EVT", "d17.EVT"],
-            &[("D07.EVT", "382A0F77"), ("d16.EVT", "2DEED09D"), ("d17.EVT", "BAF06A87")],
+            &[("D07.EVT", "BC815070"), ("d16.EVT", "6E5105FE"), ("d17.EVT", "4BA639C8")],
         );
     }
 }
@@ -3707,7 +3815,7 @@ fn test_real_h3lod() {
         real_archive_test(bin, label, "real_h3.lod",
             &["ab.h3c", "Ar_Bg.pcx", "ArA_CoBl.pcx"],
             &["ab.h3c", "Ar_Bg.bmp", "ArA_CoBl.bmp"],
-            &[("ab.h3c", "E03F056B"), ("Ar_Bg.bmp", "D8C4FC21"), ("ArA_CoBl.bmp", "671BF215")],
+            &[("ab.h3c", "E03F056B"), ("Ar_Bg.bmp", "69A2B374"), ("ArA_CoBl.bmp", "543EA27E")],
         );
     }
 }
@@ -3733,6 +3841,722 @@ fn test_real_h3vid() {
             &["C1ab7.bik", "C1db2.bik"],
             &[("C1ab7.bik", "C7248045"), ("C1db2.bik", "B5D8F584")],
         );
+    }
+}
+
+/// Read a BMP's header: (width, height, bits per pixel, colour table entries).
+fn bmp_header(data: &[u8]) -> (i32, i32, u16, u32) {
+    assert!(data.len() > 54 && &data[..2] == b"BM", "not a BMP");
+    let i32_at = |o: usize| i32::from_le_bytes(data[o..o + 4].try_into().unwrap());
+    let u32_at = |o: usize| u32::from_le_bytes(data[o..o + 4].try_into().unwrap());
+    (i32_at(18), i32_at(22), u16::from_le_bytes(data[28..30].try_into().unwrap()), u32_at(46))
+}
+
+/// Sprites become .bmp files, coloured with a palette that lives in a
+/// neighbouring bitmaps.lod, and two of the games name the wrong one.
+///
+/// `real_sprite_pal.lod` puts one sprite from each game side by side:
+///
+/// * `BATATA0` (MM6) names palette 422, which exists but belongs to something
+///   else — the right one is 156.
+/// * `Swptree1` (MM7) names 940, which is in no bitmaps.lod at all — 120.
+/// * `ARROWA0` (MM8) is ordinary, and has 38 fully transparent rows.
+/// * `C3_HASTE` (MM6) is ordinary and tiny, with none.
+///
+/// The corrections come from the table MMArchive carries (`PalFix` in
+/// RSLodEdt.pas). The two corrected CRCs below are of the .bmp files
+/// **MMArchive itself produced**, kept in `tests/reference/mmarchive/`, so
+/// this asserts byte-for-byte agreement with the reference tool.
+///
+/// The palettes in the fixture are spelled `pal156`, `Pal002`, `PAL120`,
+/// `pal338` and `PaL422` — all three spellings the games actually use, because
+/// RSPak looks them up with a case-insensitive FindFile and MM8's own
+/// bitmaps.lod mixes them.
+#[test]
+fn test_real_sprite_palette() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("sprite_pal_{}", label));
+        copy_real_to_temp("real_sprite_pal.lod", &dir);
+        copy_real_to_temp("real_pictures.bitmaps.lod", &dir);
+
+        run_ok_in(bin, &dir, &["extract", "real_sprite_pal.lod", "out"]);
+        for (name, len, crc, w, h) in [
+            ("BATATA0.bmp", 52606usize, "2822756C", 226, 226),  // == MMArchive's own file
+            ("Swptree1.bmp", 24710, "CBBB5B29", 112, 211),      // == MMArchive's own file
+            ("ARROWA0.bmp", 8278, "149AFB37", 60, 120),
+            ("C3_HASTE.bmp", 1218, "DB768106", 20, 7),
+        ] {
+            let p = dir.join("out").join(name);
+            assert!(p.exists(), "[{}] {} should be extracted", label, name);
+            let data = fs::read(&p).unwrap();
+            assert_eq!(data.len(), len, "[{}] {} size", label, name);
+            assert_eq!(crc32_hex(&data), crc, "[{}] {} content", label, name);
+            assert_eq!(bmp_header(&data), (w, h, 8, 256), "[{}] {} header", label, name);
+        }
+        cleanup(&dir);
+    }
+}
+
+/// The palette table is keyed on the sprite's 20 header bytes as well as its
+/// name, so a sprite someone replaced with their own keeps the palette it
+/// names. `real_sprite_nofix.lod` holds a resource called `BATATA0` that is not
+/// the game's bat: the correction must not fire, and it must come out coloured
+/// with palette 2, which is what its own header asks for.
+#[test]
+fn test_sprite_palette_fixup_is_keyed_on_the_header() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("sprite_nofix_{}", label));
+        copy_real_to_temp("real_sprite_nofix.lod", &dir);
+        copy_real_to_temp("real_pictures.bitmaps.lod", &dir);
+
+        run_ok_in(bin, &dir, &["extract", "real_sprite_nofix.lod", "out"]);
+        let data = fs::read(dir.join("out").join("BATATA0.bmp")).unwrap();
+        assert_eq!(bmp_header(&data), (20, 7, 8, 256), "[{}] not the game's bat", label);
+        // Same bytes as C3_HASTE, which is what it is a copy of.
+        assert_eq!(crc32_hex(&data), "DB768106",
+            "[{}] the correction must not have fired", label);
+        cleanup(&dir);
+    }
+}
+
+/// With no bitmaps.lod to take a palette from there is nothing to colour a
+/// sprite with, so the stored bytes are written instead — which is what the
+/// Delphi CLI ends up doing too, its extract loop catching the failure and
+/// re-extracting raw. `real_sprites.lod` names palette 23391, which no
+/// bitmaps.lod has.
+#[test]
+fn test_sprite_without_a_palette_falls_back_to_stored_bytes() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("sprite_nopal_{}", label));
+        copy_real_to_temp("real_sprites.lod", &dir);
+        run_ok_in(bin, &dir, &["extract", "real_sprites.lod", "out"]);
+        let data = fs::read(dir.join("out").join("Editor i1.bmp")).unwrap();
+        assert_ne!(&data[..2], b"BM", "[{}] there was no palette to build a BMP with", label);
+        assert_eq!(crc32_hex(&data), "ACDC9E8D", "[{}] stored bytes", label);
+        cleanup(&dir);
+    }
+}
+
+/// Textures and icons carry their own palette, so they always decode. What
+/// differs is the mipmaps: a bitmaps.lod texture decompresses to more than
+/// BmpWidth*BmpHeight because three half-size levels follow the picture, and
+/// those are not part of it. An icons.lod resource has none.
+#[test]
+fn test_texture_decoding_with_and_without_mipmaps() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("texture_{}", label));
+        copy_real_to_temp("real_bitmaps.lod", &dir);
+        copy_real_to_temp("real_icons.lod", &dir);
+
+        // bitmaps.lod: 128x128 with mipmaps (UnpSize 21760 vs BmpSize 16384)
+        run_ok_in(bin, &dir, &["extract", "real_bitmaps.lod", "tex"]);
+        for (name, crc) in [("HDLAV007.bmp", "B3FE7A28"), ("HDWTR006.bmp", "09800FAF")] {
+            let data = fs::read(dir.join("tex").join(name)).unwrap();
+            assert_eq!(bmp_header(&data), (128, 128, 8, 256), "[{}] {}", label, name);
+            // 14 + 40 + 1024 + 128*128, i.e. the picture only
+            assert_eq!(data.len(), 17462, "[{}] {} must not carry the mip levels", label, name);
+            assert_eq!(crc32_hex(&data), crc, "[{}] {}", label, name);
+        }
+        // the palette resource is not a picture
+        let act = fs::read(dir.join("tex").join("pal453.act")).unwrap();
+        assert_eq!(act.len(), 768, "[{}] palette", label);
+
+        // icons.lod: no mipmaps, and sizes that are not powers of two
+        run_ok_in(bin, &dir, &["extract", "real_icons.lod", "ico"]);
+        for (name, crc, w, h) in [
+            ("GF-ASpell.bmp", "2205C82B", 36, 46),
+            ("GF-ASpellD.bmp", "857A0994", 36, 46),
+            ("GF-Swrd.bmp", "2D3BE4FD", 42, 43),
+        ] {
+            let data = fs::read(dir.join("ico").join(name)).unwrap();
+            assert_eq!(bmp_header(&data), (w, h, 8, 256), "[{}] {}", label, name);
+            assert_eq!(crc32_hex(&data), crc, "[{}] {}", label, name);
+        }
+        cleanup(&dir);
+    }
+}
+
+/// Heroes stores pictures in something it calls PCX that is not PCX at all: a
+/// 12-byte header, raw pixels, and a palette only when they are 8-bit.
+/// `real_h3.lod` has one of each, plus a resource that is not a picture.
+#[test]
+fn test_h3_pcx_decoding() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("h3pcx_{}", label));
+        copy_real_to_temp("real_h3.lod", &dir);
+        run_ok_in(bin, &dir, &["extract", "real_h3.lod", "out"]);
+
+        // 24-bit: no colour table
+        let big = fs::read(dir.join("out").join("Ar_Bg.bmp")).unwrap();
+        assert_eq!(bmp_header(&big), (800, 600, 24, 0), "[{}] 24-bit PCX", label);
+        assert_eq!(crc32_hex(&big), "69A2B374", "[{}] Ar_Bg", label);
+
+        // 8-bit: 256 colours
+        let small = fs::read(dir.join("out").join("ArA_CoBl.bmp")).unwrap();
+        assert_eq!(bmp_header(&small), (48, 88, 8, 256), "[{}] 8-bit PCX", label);
+        assert_eq!(crc32_hex(&small), "543EA27E", "[{}] ArA_CoBl", label);
+
+        // not a picture, so not touched
+        let other = fs::read(dir.join("out").join("ab.h3c")).unwrap();
+        assert_eq!(crc32_hex(&other), "E03F056B", "[{}] ab.h3c", label);
+        cleanup(&dir);
+    }
+}
+
+/// Pull one resource's stored bytes out of an MM LOD, for tests that need to
+/// look at what was written rather than at what comes back out.
+/// Returns (blob, name field size).
+fn lod_stored_entry(path: &Path, want: &str) -> (Vec<u8>, usize) {
+    let raw = fs::read(path).unwrap();
+    assert_eq!(&raw[..4], b"LOD\0", "{:?} is not a LOD", path);
+    let u32_at = |o: usize| u32::from_le_bytes(raw[o..o + 4].try_into().unwrap());
+    let archive_start = u32_at(272) as usize;
+    let count = u16::from_le_bytes(raw[284..286].try_into().unwrap()) as usize;
+    let version = String::from_utf8_lossy(&raw[4..84]);
+    let version = version.split('\0').next().unwrap_or("");
+    let (name_size, item) = if version == "MMVIII" { (0x40, 0x4C) } else { (0x10, 0x20) };
+    for i in 0..count {
+        let at = archive_start + i * item;
+        let end = raw[at..at + name_size].iter().position(|&b| b == 0).unwrap_or(name_size);
+        let name = String::from_utf8_lossy(&raw[at..at + end]).to_string();
+        if name.eq_ignore_ascii_case(want) {
+            let addr = archive_start + u32_at(at + name_size) as usize;
+            let size = u32_at(at + name_size + 4) as usize;
+            return (raw[addr..addr + size].to_vec(), name_size);
+        }
+    }
+    panic!("{:?} has no resource called {}", path, want);
+}
+
+/// A picture added to an archive must come back out as the same picture.
+///
+/// This is the half the extraction tests cannot cover: `add` has to turn a
+/// .bmp back into the game's own format (RSLod.pas PackBitmap / PackSprite /
+/// PackPcx), and getting the header wrong there produces an archive that
+/// round-trips through mmarch and is unreadable everywhere else.
+#[test]
+fn test_picture_add_roundtrip() {
+    for (label, ref bin) in get_binaries() {
+        for (fixture, archive_type, new_name, resource) in [
+            ("real_bitmaps.lod", "mmbitmapslod", "made.bitmaps.lod", "HDLAV007.bmp"),
+            ("real_icons.lod", "mmiconslod", "made.icons.lod", "GF-Swrd.bmp"),
+            ("real_sprite_pal.lod", "mmspriteslod", "made.sprites.lod", "C3_HASTE.bmp"),
+            ("real_h3.lod", "h3lod", "made.lod", "ArA_CoBl.bmp"),
+            ("real_h3.lod", "h3lod", "made24.lod", "Ar_Bg.bmp"),
+        ] {
+            let dir = temp_dir(&format!("pic_rt_{}_{}", archive_type, label));
+            copy_real_to_temp(fixture, &dir);
+            // the palettes sprites and textures are matched against
+            copy_real_to_temp("real_pictures.bitmaps.lod", &dir);
+
+            run_ok_in(bin, &dir, &["extract", fixture, "out"]);
+            let original = fs::read(dir.join("out").join(resource)).unwrap();
+            assert_eq!(&original[..2], b"BM", "[{}] {} should be a BMP", label, resource);
+
+            let from = format!("out/{}", resource);
+            run_ok_in(bin, &dir, &["create", new_name, archive_type, ".", &from]);
+            run_ok_in(bin, &dir, &["extract", new_name, "back"]);
+
+            let again = fs::read(dir.join("back").join(resource)).unwrap();
+            assert_eq!(again, original,
+                "[{}] {} must survive a trip through {}", label, resource, archive_type);
+            cleanup(&dir);
+        }
+    }
+}
+
+/// Adding a texture to a bitmaps.lod has to find the palette index it belongs
+/// to (RSLod.pas FindBitmapPalette -> RSMMArchivesFindSamePalette), and
+/// replacing one has to keep the flags the original carried. HDLAV007 uses
+/// palette 862 and Bits 18, i.e. mipmapped.
+#[test]
+fn test_bitmaps_add_finds_the_palette_and_keeps_the_flags() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("bmp_pal_{}", label));
+        copy_real_to_temp("real_bitmaps.lod", &dir);
+        copy_real_to_temp("real_pictures.bitmaps.lod", &dir);
+        run_ok_in(bin, &dir, &["extract", "real_bitmaps.lod", "out"]);
+
+        // a fresh archive: the index has to come from matching the palette
+        run_ok_in(bin, &dir, &["create", "fresh.bitmaps.lod", "mmbitmapslod", ".",
+                               "out/HDLAV007.bmp"]);
+        let (blob, ns) = lod_stored_entry(&dir.join("fresh.bitmaps.lod"), "HDLAV007");
+        let i16_at = |o: usize| i16::from_le_bytes(blob[o..o + 2].try_into().unwrap());
+        let i32_at = |o: usize| i32::from_le_bytes(blob[o..o + 4].try_into().unwrap());
+        assert_eq!(i32_at(ns), 128 * 128, "[{}] BmpSize", label);
+        assert_eq!((i16_at(ns + 8), i16_at(ns + 10)), (128, 128), "[{}] dimensions", label);
+        assert_eq!(i16_at(ns + 20), 862, "[{}] palette index, matched by content", label);
+        assert_eq!(i32_at(ns + 28), 0x12, "[{}] a new texture gets Bits $12", label);
+        assert_eq!((i16_at(ns + 12), i16_at(ns + 14)), (7, 7), "[{}] log2 of the size", label);
+        assert_eq!((i16_at(ns + 16), i16_at(ns + 18)), (127, 127), "[{}] size - 1", label);
+        // mipmapped: the pixel buffer is the picture plus three half-size levels
+        assert_eq!(i32_at(ns + 24), 16384 + 4096 + 1024 + 256, "[{}] UnpSize", label);
+
+        // replacing the resource in the archive it came from keeps its flags
+        run_ok_in(bin, &dir, &["add", "real_bitmaps.lod", "out/HDLAV007.bmp"]);
+        let (again, ns2) = lod_stored_entry(&dir.join("real_bitmaps.lod"), "HDLAV007");
+        let j16 = |o: usize| i16::from_le_bytes(again[o..o + 2].try_into().unwrap());
+        let j32 = |o: usize| i32::from_le_bytes(again[o..o + 4].try_into().unwrap());
+        assert_eq!(j16(ns2 + 20), 862, "[{}] kept the palette index", label);
+        assert_eq!(j32(ns2 + 28), 18, "[{}] kept Bits", label);
+        cleanup(&dir);
+    }
+}
+
+/// A texture needs a palette index too, and there is no sensible default: a
+/// texture stored under palette 0 is a picture that renders in the wrong
+/// colours. MMArchMain.pas `getPalette` raises rather than guess, and so does
+/// mmarch — but `/p` overrides the search, and replacing an existing texture
+/// inherits the index it already had (covered above).
+#[test]
+fn test_bitmaps_add_without_a_palette_is_refused() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("bmp_nopal_{}", label));
+        copy_real_to_temp("real_bitmaps.lod", &dir);
+        copy_real_to_temp("real_pictures.bitmaps.lod", &dir);
+        run_ok_in(bin, &dir, &["extract", "real_bitmaps.lod", "out"]);
+
+        // Repaint the colour table so it matches no palette anywhere.
+        let mut orphan = fs::read(dir.join("out").join("HDLAV007.bmp")).unwrap();
+        for i in 0..256 {
+            orphan[54 + i * 4] = (i as u8).wrapping_mul(7);
+            orphan[54 + i * 4 + 1] = (i as u8).wrapping_mul(11);
+            orphan[54 + i * 4 + 2] = (i as u8).wrapping_mul(13);
+        }
+        fs::write(dir.join("orphan.bmp"), &orphan).unwrap();
+
+        let (_out, err, ok) = run_in(bin, &dir,
+            &["create", "nopal.bitmaps.lod", "mmbitmapslod", ".", "orphan.bmp"]);
+        assert!(ok, "[{}] the command itself should not blow up: {}", label, err);
+        assert!(err.contains("palette"), "[{}] it should say what was missing: {}", label, err);
+        assert!(list_archive_in(bin, &dir, "nopal.bitmaps.lod").is_empty(),
+            "[{}] and nothing should have been stored", label);
+
+        // /p says which one to use, and the header carries it.
+        run_ok_in(bin, &dir, &["create", "given.bitmaps.lod", "mmbitmapslod", ".",
+                               "orphan.bmp", "/p", "42"]);
+        let (blob, ns) = lod_stored_entry(&dir.join("given.bitmaps.lod"), "orphan");
+        assert_eq!(i16::from_le_bytes(blob[ns + 20..ns + 22].try_into().unwrap()), 42,
+            "[{}] /p should pick the palette index", label);
+        cleanup(&dir);
+    }
+}
+
+/// A sprite needs a palette, and an add that cannot find one must fail without
+/// taking the resource it was replacing with it.
+#[test]
+fn test_sprite_add_without_a_palette_keeps_the_old_resource() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("sprite_add_{}", label));
+        copy_real_to_temp("real_sprite_pal.lod", &dir);
+        copy_real_to_temp("real_pictures.bitmaps.lod", &dir);
+        run_ok_in(bin, &dir, &["extract", "real_sprite_pal.lod", "out"]);
+        let before = fs::read(dir.join("out").join("C3_HASTE.bmp")).unwrap();
+
+        // Repaint it with a palette that is in no bitmaps.lod, so nothing
+        // matches and no resource of that name exists to inherit one from.
+        let mut orphan = before.clone();
+        for i in 0..256 {
+            orphan[54 + i * 4] = (i as u8).wrapping_mul(7);
+            orphan[54 + i * 4 + 1] = (i as u8).wrapping_mul(11);
+            orphan[54 + i * 4 + 2] = (i as u8).wrapping_mul(13);
+        }
+        fs::write(dir.join("orphan.bmp"), &orphan).unwrap();
+
+        let (_out, err, ok) = run_in(bin, &dir, &["add", "real_sprite_pal.lod", "orphan.bmp"]);
+        assert!(ok, "[{}] the command itself should not blow up: {}", label, err);
+        assert!(err.contains("palette"), "[{}] it should say what was missing: {}", label, err);
+
+        // everything that was in the archive is still in it
+        let names = list_archive_in(bin, &dir, "real_sprite_pal.lod");
+        for want in ["BATATA0", "C3_HASTE", "Swptree1", "ARROWA0"] {
+            assert!(names.iter().any(|n| n.eq_ignore_ascii_case(want)),
+                "[{}] {} should still be there: {:?}", label, want, names);
+        }
+        run_ok_in(bin, &dir, &["extract", "real_sprite_pal.lod", "after"]);
+        assert_eq!(fs::read(dir.join("after").join("C3_HASTE.bmp")).unwrap(), before,
+            "[{}] and unchanged", label);
+        cleanup(&dir);
+    }
+}
+
+/// A mipmapped texture is halved three times, so both sides have to be a power
+/// of two of at least 4 (RSLod.pas raises SRSLodMustPowerOf2). Icons have no
+/// mipmaps and take any size — `GF-Swrd` is 42x43.
+#[test]
+fn test_mipmapped_texture_must_be_a_power_of_two() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("pow2_{}", label));
+        copy_real_to_temp("real_icons.lod", &dir);
+        copy_real_to_temp("real_pictures.bitmaps.lod", &dir);
+        run_ok_in(bin, &dir, &["extract", "real_icons.lod", "out"]);
+
+        // /p gets past the palette lookup, which RSPak does first, so the size
+        // check is what this has to fail on.
+        let (_out, err, ok) = run_in(bin, &dir,
+            &["create", "odd.bitmaps.lod", "mmbitmapslod", ".", "out/GF-Swrd.bmp", "/p", "1"]);
+        assert!(ok, "[{}] the command itself should not blow up: {}", label, err);
+        assert!(err.contains("power of 2"), "[{}] it should say why: {}", label, err);
+
+        // the same picture is fine in an icons archive
+        run_ok_in(bin, &dir, &["create", "fine.icons.lod", "mmiconslod", ".", "out/GF-Swrd.bmp"]);
+        run_ok_in(bin, &dir, &["extract", "fine.icons.lod", "back"]);
+        assert_eq!(fs::read(dir.join("back").join("GF-Swrd.bmp")).unwrap(),
+                   fs::read(dir.join("out").join("GF-Swrd.bmp")).unwrap(),
+                   "[{}] icons take any size", label);
+        cleanup(&dir);
+    }
+}
+
+/// A Heroes LOD says a resource is compressed by setting its packed-size
+/// field, not by the two size fields disagreeing — and that distinction is
+/// load-bearing, because Heroes archives do contain resources that compress to
+/// exactly their own length. `Lcdesc.txt` in Heroes 3's `H3ab_bmp.lod` is 54
+/// bytes either way, and `AVLXsu12.def` in `H3ab_spr.lod` is 1683; treating
+/// "the sizes match" as "not compressed" handed both of them out still zipped.
+///
+/// The fixture also carries the other two shapes — an ordinary compressed
+/// resource and one stored as it is — and one picture of each colour depth.
+#[test]
+fn test_h3_packed_flag_and_picture_depths() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("h3_sizes_{}", label));
+        copy_real_to_temp("real_h3_sizes.lod", &dir);
+        run_ok_in(bin, &dir, &["extract", "real_h3_sizes.lod", "out"]);
+
+        // compressed to exactly its own length: 54 stored, 54 unpacked
+        let same = fs::read(dir.join("out").join("Lcdesc.txt")).unwrap();
+        assert_eq!(same.len(), 54, "[{}] Lcdesc.txt length", label);
+        assert_ne!(&same[..2], b"\x78\x9c",
+            "[{}] Lcdesc.txt came out still compressed", label);
+        assert_eq!(crc32_hex(&same), "97A0721A", "[{}] Lcdesc.txt", label);
+
+        // compressed the ordinary way: 25 stored, 36 unpacked
+        let packed = fs::read(dir.join("out").join("SkillLev.txt")).unwrap();
+        assert_eq!(packed.len(), 36, "[{}] SkillLev.txt length", label);
+        assert_eq!(crc32_hex(&packed), "B1D03872", "[{}] SkillLev.txt", label);
+
+        // stored as it is: the packed-size field is 0
+        let stored = fs::read(dir.join("out").join("AH16_.msk")).unwrap();
+        assert_eq!(stored.len(), 14, "[{}] AH16_.msk length", label);
+        assert_eq!(crc32_hex(&stored), "EDFC8859", "[{}] AH16_.msk", label);
+
+        // pictures, one of each depth
+        let p8 = fs::read(dir.join("out").join("HPSyyy.bmp")).unwrap();
+        assert_eq!(bmp_header(&p8), (48, 32, 8, 256), "[{}] 8-bit picture", label);
+        assert_eq!(crc32_hex(&p8), "626C1906", "[{}] HPSyyy", label);
+        let p24 = fs::read(dir.join("out").join("Camp1DB2.bmp")).unwrap();
+        assert_eq!(bmp_header(&p24), (200, 116, 24, 0), "[{}] 24-bit picture", label);
+        assert_eq!(crc32_hex(&p24), "C41A9854", "[{}] Camp1DB2", label);
+
+        // and all five survive a rebuild
+        run_ok_in(bin, &dir, &["optimize", "real_h3_sizes.lod"]);
+        run_ok_in(bin, &dir, &["extract", "real_h3_sizes.lod", "again"]);
+        for name in ["Lcdesc.txt", "SkillLev.txt", "AH16_.msk", "HPSyyy.bmp", "Camp1DB2.bmp"] {
+            assert_eq!(fs::read(dir.join("again").join(name)).unwrap(),
+                       fs::read(dir.join("out").join(name)).unwrap(),
+                       "[{}] {} after optimize", label, name);
+        }
+        cleanup(&dir);
+    }
+}
+
+// ===========================================================================
+// Regression fixtures: archives whose entries are NOT stored in table order
+// ===========================================================================
+//
+// Real MM6/7/8 archives do not lay their files out in the order the entry table
+// lists them — bitmaps.lod, icons.lod, sprites.lod and MM8's English*.lod all
+// have unsorted addresses. Up to v6.0.1 the Rust port derived an entry's stored
+// size from the gap to the *next table entry's* address, which is only right for
+// a sorted archive. Every fixture below is a handful of entries lifted verbatim
+// out of a real game archive (header copied byte for byte, blobs copied byte for
+// byte) and re-laid-out so the addresses run out of order, which is enough to
+// reproduce the whole family of bugs in a couple of KB.
+
+/// MM8 localisation LOD (`mm8loclod`): 64-byte names in front of each
+/// TMMLodFile header, unsorted addresses, and `.str` entries whose NUL
+/// separators RSPak turns into CRLF.
+///
+/// v6.0.1 wrote 3 of these 4 files and two of them were 768 bytes of raw
+/// archive data; `Out15.STR` failed outright with "failed to fill whole buffer"
+/// because its size came out as a ~4 GB underflow.
+#[test]
+fn test_real_mm8loclod_unsorted() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_mm8loc_unsorted.T.lod",
+            &["Awards.txt", "Out15.STR", "fontpal.pcx", "D07.STR"],
+            &["Awards.txt", "Out15.STR", "fontpal.pcx", "D07.STR"],
+            &[("Awards.txt", "F864563F"), ("Out15.STR", "2C683AE2"),
+              ("fontpal.pcx", "AE969F9E"), ("D07.STR", "680B20DD")],
+        );
+    }
+}
+
+/// MM6/7 icons LOD (`mmiconslod`): 16-byte names, unsorted addresses.
+/// v6.0.1 wrote 2 of these 4 files.
+#[test]
+fn test_real_mmiconslod_unsorted() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_icons_unsorted.lod",
+            &["dchest.bin", "NWC.STR", "D28.EVT", "D13.STR"],
+            &["dchest.bin", "NWC.STR", "D28.EVT", "D13.STR"],
+            &[("dchest.bin", "7F51337F"), ("NWC.STR", "3B6D3EAD"),
+              ("D28.EVT", "18C73750"), ("D13.STR", "293DEB46")],
+        );
+    }
+}
+
+/// MM6/7 bitmaps LOD (`mmbitmapslod`): unsorted addresses, and every shape a
+/// picture archive holds. v6.0.1 mis-sized 10 of MM7 `BITMAPS.LOD`'s entries
+/// outright and silently handed back the wrong bytes for the rest.
+#[test]
+fn test_real_mmbitmapslod_unsorted() {
+    for (label, ref bin) in get_binaries() {
+        real_archive_test(bin, label, "real_bitmaps_unsorted.lod",
+            &["sgSTARS", "solid01", "Trim9_16a", "Trim9_16",
+              "PAL007", "pal008", "errorlog.txt"],
+            &["sgSTARS.bmp", "solid01.bmp", "Trim9_16a.bmp", "Trim9_16.bmp",
+              "PAL007.act", "pal008.act", "errorlog.txt"],
+            &[("sgSTARS.bmp", "2FE05744"), ("solid01.bmp", "9AB54B11"),
+              ("Trim9_16a.bmp", "937680A4"), ("Trim9_16.bmp", "74823250"),
+              ("PAL007.act", "56FD8F25"), ("pal008.act", "7F387331"),
+              ("errorlog.txt", "08E7484A")],
+        );
+    }
+}
+
+/// The same fixture from the other side: not "does the CRC still match" but
+/// "is each of these the picture the header describes". Every shipped texture
+/// is mipmapped, so the two kinds that exist are Bits $12 (pixels stored as
+/// they are) and Bits $13 (zlib); `Trim9_16a` and `Trim9_16` are 64x16 and
+/// 16x64 with the same palette, so swapping width for height anywhere in the
+/// decoder turns one into the other instead of going unnoticed.
+#[test]
+fn test_bitmaps_lod_covers_every_stored_shape() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("bmp_shapes_{}", label));
+        copy_real_to_temp("real_bitmaps_unsorted.lod", &dir);
+        run_ok_in(bin, &dir, &["extract", "real_bitmaps_unsorted.lod", "out"]);
+        let read = |n: &str| fs::read(dir.join("out").join(n)).unwrap();
+
+        // Bits $13, compressed: 211 stored bytes become 5440, of which the
+        // first 4096 are the picture and the rest are the three mipmap levels.
+        assert_eq!(bmp_header(&read("sgSTARS.bmp")), (64, 64, 8, 256),
+            "[{}] compressed texture", label);
+        // Bits $12, stored: 16x16 with no compression at all.
+        assert_eq!(bmp_header(&read("solid01.bmp")), (16, 16, 8, 256),
+            "[{}] uncompressed texture", label);
+
+        // the transposed pair
+        let wide = read("Trim9_16a.bmp");
+        let tall = read("Trim9_16.bmp");
+        assert_eq!(bmp_header(&wide), (64, 16, 8, 256), "[{}] wide", label);
+        assert_eq!(bmp_header(&tall), (16, 64, 8, 256), "[{}] tall", label);
+        assert_eq!(wide.len(), tall.len(),
+            "[{}] 64x16 and 16x64 are the same number of bytes", label);
+        assert_ne!(wide, tall,
+            "[{}] width and height must not be interchangeable", label);
+
+        // A palette is 768 bytes with no BMP wrapper, and the name it is
+        // spelt with varies inside a single archive.
+        for n in ["PAL007.act", "pal008.act"] {
+            assert_eq!(read(n).len(), 768, "[{}] {} is a bare palette", label, n);
+        }
+        // ...and a picture LOD can hold plain data as well.
+        assert_eq!(read("errorlog.txt").len(), 57, "[{}] plain entry", label);
+        assert!(read("errorlog.txt").starts_with(b"CSpriteFrameTable"),
+            "[{}] plain entry content", label);
+        cleanup(&dir);
+    }
+}
+
+/// Writing the fixture back: a decoded texture has to survive being added to
+/// the archive it came out of, and the palette index has to be found again by
+/// matching the 768 bytes against the archive's own palettes — which are
+/// spelt `PAL007` and `pal008` here, so a case-sensitive comparison loses
+/// them. (In MM8's `bitmaps.lod` 93 of the 292 palettes are spelt `Pal`.)
+#[test]
+fn test_bitmaps_lod_roundtrip_finds_its_palette_by_content() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("bmp_roundtrip_{}", label));
+        copy_real_to_temp("real_bitmaps_unsorted.lod", &dir);
+        run_ok_in(bin, &dir, &["extract", "real_bitmaps_unsorted.lod", "out"]);
+
+        for (name, palette, w, h) in [("solid01", 8i16, 16i16, 16i16),
+                                      ("Trim9_16a", 8, 64, 16),
+                                      ("sgSTARS", 7, 64, 64)] {
+            run_ok_in(bin, &dir, &["add", "real_bitmaps_unsorted.lod",
+                                   &format!("out/{}.bmp", name)]);
+            let (blob, ns) = lod_stored_entry(&dir.join("real_bitmaps_unsorted.lod"), name);
+            let i16_at = |o: usize| i16::from_le_bytes(blob[o..o + 2].try_into().unwrap());
+            let i32_at = |o: usize| i32::from_le_bytes(blob[o..o + 4].try_into().unwrap());
+            assert_eq!(i16_at(ns + 20), palette,
+                "[{}] {}: palette found by content, whatever its name's case", label, name);
+            assert_eq!((i16_at(ns + 8), i16_at(ns + 10)), (w, h),
+                "[{}] {}: dimensions", label, name);
+            let px = (w as i32) * (h as i32);
+            assert_eq!(i32_at(ns), px, "[{}] {}: BmpSize", label, name);
+            assert_eq!(i32_at(ns + 24), px + px / 4 + px / 16 + px / 64,
+                "[{}] {}: UnpSize is the picture plus three mipmap levels", label, name);
+        }
+
+        // and the pictures still decode to the same bytes
+        run_ok_in(bin, &dir, &["extract", "real_bitmaps_unsorted.lod", "again"]);
+        for n in ["solid01.bmp", "Trim9_16a.bmp", "sgSTARS.bmp", "Trim9_16.bmp",
+                  "PAL007.act", "pal008.act", "errorlog.txt"] {
+            assert_eq!(fs::read(dir.join("again").join(n)).unwrap(),
+                       fs::read(dir.join("out").join(n)).unwrap(),
+                       "[{}] {} changed on the way back in", label, n);
+        }
+        cleanup(&dir);
+    }
+}
+
+/// MM6 chapter LOD (`mm6save`): unsorted addresses plus `OutB3.ddm`, whose
+/// TMM6GamesFile header counts its own 8 bytes in DataSize. RSPak never reads
+/// that field — it passes `Size[i] - headerSize` to Unzip — so trusting it
+/// overruns the entry and the file is refused.
+#[test]
+fn test_real_chapter_ddm_datasize() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("chapter_ddm_{}", label));
+        copy_real_to_temp("real_chapter_ddm.lod", &dir);
+
+        run_ok_in(bin, &dir, &["extract", "real_chapter_ddm.lod", "out"]);
+        for (name, len) in [("clock.bin", 40usize), ("outa1.ddm", 86292),
+                            ("OutB3.ddm", 194996), ("header.bin", 100)] {
+            let p = dir.join("out").join(name);
+            assert!(p.exists(), "[{}] {} should be extracted", label, name);
+            assert_eq!(fs::metadata(&p).unwrap().len() as usize, len,
+                "[{}] {} unpacked size", label, name);
+        }
+
+        let stdout = run_ok_in(bin, &dir, &["checksum", "real_chapter_ddm.lod", "*"]);
+        for crc in ["A17FA155", "434032F2", "581F20E3"] {
+            assert!(stdout.contains(crc), "[{}] checksum missing {}: {}", label, crc, stdout);
+        }
+        cleanup(&dir);
+    }
+}
+
+/// The same chapter LOD carries `header.bin` twice. Delphi extracts entries in
+/// index order, so the later one lands on disk; the Rust port extracts on all
+/// cores, so without a tie-break the winner depended on which worker finished
+/// last. Extracting repeatedly has to give the same bytes every time.
+#[test]
+fn test_duplicate_entry_name_extraction_is_deterministic() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("dup_name_{}", label));
+        copy_real_to_temp("real_chapter_ddm.lod", &dir);
+
+        // CRC D5FB4143 is the second header.bin, the one Delphi's loop leaves
+        // behind; EE6D648E is the first.
+        for round in 0..8 {
+            let out = dir.join(format!("out{}", round));
+            run_ok_in(bin, &dir, &["extract", "real_chapter_ddm.lod",
+                                   out.file_name().unwrap().to_str().unwrap()]);
+            let got = fs::read(out.join("header.bin")).unwrap();
+            assert_eq!(crc32_hex(&got), "D5FB4143",
+                "[{}] round {}: duplicate name must resolve to the last entry", label, round);
+        }
+        cleanup(&dir);
+    }
+}
+
+/// VID archives have no size field at all: an entry runs until the nearest
+/// following address of ANY other entry (RSLod.pas TRSVid.GetFileSize), not
+/// until the next one in the table. v6.0.1 used the table order, so `Charlie`
+/// came out 711 bytes instead of 274 and `Bravo` failed outright.
+#[test]
+fn test_real_vid_unsorted() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("vid_unsorted_{}", label));
+        copy_real_to_temp("real_vid_unsorted.vid", &dir);
+
+        run_ok_in(bin, &dir, &["extract", "real_vid_unsorted.vid", "out"]);
+        for (name, len, crc) in [("Alpha.smk", 200usize, "A7A654F7"),
+                                 ("Bravo.smk", 237, "3B82F353"),
+                                 ("Charlie.smk", 274, "84A4D962")] {
+            let p = dir.join("out").join(name);
+            assert!(p.exists(), "[{}] {} should be extracted", label, name);
+            let data = fs::read(&p).unwrap();
+            assert_eq!(data.len(), len, "[{}] {} size", label, name);
+            assert_eq!(crc32_hex(&data), crc, "[{}] {} content", label, name);
+        }
+        cleanup(&dir);
+    }
+}
+
+/// A `mm8loclod` written by mmarch must put the name in a 64-byte field, the
+/// way the game and MMArchive read it. v6.0.1 wrote 16, which put the
+/// TMMLodFile header inside the name field: the archive round-tripped through
+/// mmarch itself and was unreadable everywhere else (the same failure mode as
+/// issue #2).
+#[test]
+fn test_mm8loclod_written_layout() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("mm8_layout_{}", label));
+        // > 256 bytes so the add path actually compresses (TRSLod.Zip's cutoff)
+        write_test_file(&dir.join("Hello.txt"), &b"MM8 localisation payload. ".repeat(40));
+        run_ok_in(bin, &dir, &["create", "out.T.lod", "mm8loclod", ".", "Hello.txt"]);
+
+        let raw = fs::read(dir.join("out.T.lod")).unwrap();
+        let archive_start = u32::from_le_bytes(raw[272..276].try_into().unwrap()) as usize;
+        let count = u16::from_le_bytes(raw[284..286].try_into().unwrap()) as usize;
+        assert_eq!(count, 1, "[{}] entry count", label);
+
+        // 76-byte entry: name[64], addr, size, unused
+        let e = archive_start;
+        let addr = u32::from_le_bytes(raw[e + 64..e + 68].try_into().unwrap()) as usize;
+        let size = u32::from_le_bytes(raw[e + 68..e + 72].try_into().unwrap()) as usize;
+        assert_eq!(archive_start + addr + size, raw.len(),
+            "[{}] the entry's size field must cover the rest of the file", label);
+
+        // The blob is name[64] + TMMLodFile[32] + payload; BmpSize is 0 and
+        // DataSize is the payload length for a plain file.
+        let blob = &raw[archive_start + addr..archive_start + addr + size];
+        assert_eq!(&blob[..9], b"Hello.txt", "[{}] blob starts with the name", label);
+        let bmp_size = i32::from_le_bytes(blob[64..68].try_into().unwrap());
+        let data_size = i32::from_le_bytes(blob[68..72].try_into().unwrap()) as usize;
+        let unp_size = i32::from_le_bytes(blob[88..92].try_into().unwrap()) as usize;
+        assert_eq!(bmp_size, 0, "[{}] BmpSize at offset 64", label);
+        assert_eq!(64 + 32 + data_size, size, "[{}] DataSize at offset 68", label);
+        assert_eq!(unp_size, 26 * 40, "[{}] UnpSize at offset 88", label);
+        cleanup(&dir);
+    }
+}
+
+/// A malformed entry must cost you that entry, not the rest of the archive.
+///
+/// `hasincorrectresource.icons.lod` carries a TMMLodFile header with
+/// BmpSize = UnpSize = -16777216. Those fields are signed Int32 in RSPak, and
+/// casting a negative one to a length asks for ~18 exabytes — which, with
+/// panic = "abort" in the release profile, takes the whole process down and
+/// loses the files that would have extracted fine.
+#[test]
+fn test_malformed_header_does_not_abort_extraction() {
+    for (label, ref bin) in get_binaries() {
+        let dir = temp_dir(&format!("failsafe_{}", label));
+        let src = test_general_dir().join("failsafe_test").join("hasincorrectresource.icons.lod");
+        assert!(src.exists(), "fixture {:?} missing", src);
+        fs::copy(&src, dir.join("bad.icons.lod")).unwrap();
+
+        let (_out, err, ok) = run_in(bin, &dir, &["extract", "bad.icons.lod", "out"]);
+        assert!(ok, "[{}] extraction must finish, not abort: {}", label, err);
+        assert!(err.contains("test.bin"),
+            "[{}] the bad entry should be named on stderr: {}", label, err);
+
+        // The three sound entries are intact and must still be there.
+        for good in ["test.pcx", "test.str", "test.txt"] {
+            assert!(dir.join("out").join(good).exists(),
+                "[{}] {} should still extract. Got: {:?}", label, good,
+                fs::read_dir(dir.join("out")).ok().map(|d| d
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .collect::<Vec<_>>()));
+        }
+        cleanup(&dir);
     }
 }
 

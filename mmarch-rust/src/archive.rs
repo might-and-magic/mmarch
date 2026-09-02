@@ -10,12 +10,42 @@ pub struct ArchiveEntry {
     pub unpacked_size: u32,
     pub data: Option<Vec<u8>>, // in-memory stored/wrapped data for new/modified entries (used by rebuild)
     pub original_data: Option<Vec<u8>>, // original unwrapped file data (used by read_entry_data)
+    /// RSPak's `IsPacked`, as the format defines it rather than as the two size
+    /// fields happen to compare.
+    ///
+    /// For a Heroes LOD it is "the packed-size field is non-zero"
+    /// (`TRSMMFiles.GetIsPacked` with `PackedSizeOffset >= 0`), and that is not
+    /// the same as "the sizes differ": Heroes archives really do contain
+    /// resources that compress to exactly their original length —
+    /// `Lcdesc.txt` in `H3ab_bmp.lod` and `AVLXsu12.def` in `H3ab_spr.lod` are
+    /// both 1683 and 54 bytes either way — and guessing left those two stored
+    /// compressed on disk.
+    ///
+    /// For an MM SND it is `Size <> UnpackedSize`, and for every MM LOD it is
+    /// false: what is compressed there is described by the per-resource data
+    /// header, not by the entry table.
+    pub packed: bool,
 }
 
 impl ArchiveEntry {
     pub fn is_packed(&self) -> bool {
-        self.unpacked_size != 0 && self.unpacked_size != self.size
+        self.packed
     }
+}
+
+/// How RSPak's TRSLod.DoExtract classifies one entry of a bitmaps/icons/MM8
+/// LOD, and therefore which extension the extracted file gets. The TMMLodFile
+/// header decides this, not the size of the decoded output: MM6 patch archives
+/// store palettes as `BmpSize = 0, DataSize = 768` rather than
+/// `DataSize = 0`, and RSPak leaves those entries' names alone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TmmClass {
+    /// BmpSize != 0 — an image; RSPak appends `.bmp`.
+    Bmp,
+    /// DataSize == 0 and the entry is big enough — a palette; `.act`.
+    Act,
+    /// Anything else — the name is used as it stands.
+    Plain,
 }
 
 /// The kind of archive, determines binary layout.
@@ -177,7 +207,29 @@ pub trait Archive: Sync {
                 }
             }
         }
+        // Last resort, matching MMArchMain.pas getIndexByFileName: compare
+        // against the name the entry would be extracted under, with or without
+        // its extension. This is what lets `delete clip2` reach an entry stored
+        // as `clip2.smk` in a .vid, or `Azurattk` reach `Azurattk` in a .snd
+        // that extracts as `Azurattk.wav`.
+        for i in 0..entries.len() {
+            let extracted = self.get_extracted_name(i);
+            if extracted.eq_ignore_ascii_case(name) {
+                return Some(i);
+            }
+            let stem = &extracted[..extracted.len() - crate::path_utils::get_file_ext(&extracted).len()];
+            if stem.eq_ignore_ascii_case(name) {
+                return Some(i);
+            }
+        }
         None
+    }
+
+    /// Classify a bitmaps/icons/MM8 entry the way TRSLod.DoExtract does.
+    /// Only LodArchive can answer this; everything else has no TMMLodFile
+    /// header to read.
+    fn tmmlodfile_class(&self, _index: usize) -> TmmClass {
+        TmmClass::Plain
     }
 
     /// Check whether the entry at the given index, when extracted, would have
@@ -188,32 +240,11 @@ pub trait Archive: Sync {
         let in_ext = crate::path_utils::get_file_ext(&entry.name);
 
         match kind {
-            // For bitmaps/icons/MM8: extensionless entries are .act if 768 bytes (palette), .bmp otherwise
+            // bitmaps/icons/MM8: the TMMLodFile header decides.
             ArchiveKind::LodBitmaps | ArchiveKind::LodIcons | ArchiveKind::LodMM8 => {
-                if !in_ext.is_empty() {
-                    // Entry has an extension — extracted name keeps it
-                    return in_ext.eq_ignore_ascii_case(requested_ext);
-                }
-                // Extensionless entry: check data size to determine .bmp vs .act
-                // We read the data to check, but only if disambiguation is needed
-                let req = requested_ext.to_lowercase();
-                if req == ".act" {
-                    // .act = palette file = exactly 768 bytes extracted
-                    if let Ok(data) = self.read_entry_data(index) {
-                        data.len() == 768
-                    } else {
-                        false
-                    }
-                } else if req == ".bmp" {
-                    // .bmp = anything that's NOT 768 bytes
-                    if let Ok(data) = self.read_entry_data(index) {
-                        data.len() != 768
-                    } else {
-                        true
-                    }
-                } else {
-                    true
-                }
+                let ext = crate::path_utils::get_file_ext(&self.get_extracted_name(index));
+                let _ = in_ext;
+                ext.eq_ignore_ascii_case(requested_ext)
             }
             // For sprites: extensionless -> .bmp, no ambiguity
             ArchiveKind::LodSprites => true,
@@ -236,13 +267,9 @@ pub trait Archive: Sync {
         let in_ext = crate::path_utils::get_file_ext(in_name);
 
         match kind {
-            ArchiveKind::SndHeroes | ArchiveKind::SndMM => {
-                if in_ext.is_empty() {
-                    format!("{}.wav", in_name)
-                } else {
-                    in_name.clone()
-                }
-            }
+            // RSLod.pas TRSSnd.GetExtractName appends `.wav` unconditionally,
+            // so an entry stored as `death.old` comes out `death.old.wav`.
+            ArchiveKind::SndHeroes | ArchiveKind::SndMM => format!("{}.wav", in_name),
             ArchiveKind::VidHeroes | ArchiveKind::VidMM6 => {
                 if in_ext.is_empty() {
                     format!("{}.smk", in_name)
@@ -258,19 +285,34 @@ pub trait Archive: Sync {
                     in_name.clone()
                 }
             }
+            // TRSLod.DoExtract appends the suffix to the *whole* stored name,
+            // driven by the TMMLodFile header.
+            //
+            // For an entry the header calls neither a bitmap nor a palette,
+            // RSPak leaves the name alone. mmarch instead keeps its documented
+            // "no extension -> .bmp / .act" mapping (README, "In-archive and
+            // extracted extension difference"), because the Rust port stores
+            // added .bmp files as generic data (BmpSize = 0) and they have to
+            // come back out under the name they went in with. The two only
+            // disagree on entries no shipped archive contains: MM6 fan patches
+            // store a few palettes as DataSize = 768 rather than 0, and mmarch
+            // names those pal165.act where RSPak would say pal165.
             ArchiveKind::LodBitmaps | ArchiveKind::LodIcons | ArchiveKind::LodMM8 => {
-                if in_ext.is_empty() {
-                    // Check if palette (768 bytes) -> .act, otherwise .bmp
-                    let is_palette = self.read_entry_data(index)
-                        .map(|d| d.len() == 768)
-                        .unwrap_or(false);
-                    if is_palette {
-                        format!("{}.act", in_name)
-                    } else {
-                        format!("{}.bmp", in_name)
+                match self.tmmlodfile_class(index) {
+                    TmmClass::Bmp => format!("{}.bmp", in_name),
+                    TmmClass::Act => format!("{}.act", in_name),
+                    TmmClass::Plain if in_ext.is_empty() => {
+                        let is_palette = self
+                            .read_entry_data(index)
+                            .map(|d| d.len() == 768)
+                            .unwrap_or(false);
+                        if is_palette {
+                            format!("{}.act", in_name)
+                        } else {
+                            format!("{}.bmp", in_name)
+                        }
                     }
-                } else {
-                    in_name.clone()
+                    TmmClass::Plain => in_name.clone(),
                 }
             }
             ArchiveKind::LodSprites => {

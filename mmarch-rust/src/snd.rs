@@ -1,5 +1,5 @@
 use crate::archive::{Archive, ArchiveEntry, ArchiveKind};
-use crate::lod::{zlib_compress_cached, zlib_decompress};
+use crate::lod::{zlib_compress_cached, zlib_decompress_bounded};
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
@@ -141,6 +141,7 @@ impl SndArchive {
                 unpacked_size: 0,
                 data: None,
                 original_data: None,
+                packed: false,
             });
         }
         Ok(SndArchive {
@@ -168,6 +169,8 @@ impl SndArchive {
                 unpacked_size: unpacked,
                 data: None,
                 original_data: None,
+                // GetIsPacked with both size offsets set: the two disagree.
+                packed: size != unpacked,
             });
         }
         Ok(SndArchive {
@@ -209,7 +212,9 @@ impl Archive for SndArchive {
         f.read_exact(&mut buf)?;
 
         if entry.is_packed() {
-            zlib_decompress(&buf)
+            // TRSMMFiles.RawExtract copies exactly UnpackedSize bytes out of
+            // the decompression stream.
+            zlib_decompress_bounded(&buf, entry.unpacked_size as usize)
         } else {
             Ok(buf)
         }
@@ -294,13 +299,17 @@ pub fn snd_add_file(archive: &mut SndArchive, file_path: &str) -> io::Result<()>
     archive.entries.retain(|e| !e.name.eq_ignore_ascii_case(&file_name));
 
     let is_mm = archive.kind == ArchiveKind::SndMM;
-    let (stored_data, size, unpacked_size) = if is_mm {
+    // TRSMMFiles.Add only reaches for zlib when the input is over 64 bytes.
+    let (stored_data, size, unpacked_size) = if is_mm && file_data.len() > 64 {
         let compressed = zlib_compress_cached(&file_data)?;
         if compressed.len() < file_data.len() {
             (compressed.clone(), compressed.len() as u32, file_data.len() as u32)
         } else {
             (file_data.clone(), file_data.len() as u32, file_data.len() as u32)
         }
+    } else if is_mm {
+        // Stored as is: Size == UnpackedSize is what marks it "not packed".
+        (file_data.clone(), file_data.len() as u32, file_data.len() as u32)
     } else {
         (file_data.clone(), file_data.len() as u32, 0)
     };
@@ -312,6 +321,7 @@ pub fn snd_add_file(archive: &mut SndArchive, file_path: &str) -> io::Result<()>
         unpacked_size,
         data: Some(stored_data),
         original_data: Some(file_data),
+        packed: is_mm && size != unpacked_size,
     });
 
     Ok(())

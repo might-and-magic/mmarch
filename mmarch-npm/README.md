@@ -2,9 +2,9 @@
 
 Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows, Linux and macOS.
 
-[Download mmarch v6.0.1 for Windows](https://github.com/might-and-magic/mmarch/releases/download/v6.0.1/mmarch.exe) (32 or 64 bit)
+[Download mmarch v7.0.0 for Windows](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch.exe) (32 or 64 bit)
 
-Other platforms: Linux [x64](https://github.com/might-and-magic/mmarch/releases/download/v6.0.1/mmarch-linux-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v6.0.1/mmarch-linux-arm64), [ia32](https://github.com/might-and-magic/mmarch/releases/download/v6.0.1/mmarch-linux-ia32) | macOS [x64](https://github.com/might-and-magic/mmarch/releases/download/v6.0.1/mmarch-darwin-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v6.0.1/mmarch-darwin-arm64) | or [`npm i -g mmarch`](https://www.npmjs.com/package/mmarch) with [Node.js](https://nodejs.org/) | or [`cargo install mmarch`](https://crates.io/crates/mmarch) with [Rust](https://www.rust-lang.org/)
+Other platforms: Linux [x64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-linux-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-linux-arm64), [ia32](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-linux-ia32) | macOS [x64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-darwin-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-darwin-arm64) | or [`npm i -g mmarch`](https://www.npmjs.com/package/mmarch) with [Node.js](https://nodejs.org/) | or [`cargo install mmarch`](https://crates.io/crates/mmarch) with [Rust](https://www.rust-lang.org/)
 
 All of the above are the [Rust](#development) port of [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive)'s RSPak library ([repo](https://github.com/GrayFace/Misc/)). If you need a graphical user interface tool, use MMArchive. The [Delphi](#development) Windows version 5.0.0 ([download](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch.exe)) will not be updated.
 
@@ -407,16 +407,16 @@ Since 6.0.1
 mmarch version
 ```
 
-Print the version number of mmarch and nothing else — no program name, no leading `v`, no trailing text:
+Print the version number of mmarch and nothing else - no program name, no leading `v`, no trailing text:
 
 ```
-6.0.1
+7.0.0
 ```
 
 `mmarch --version`, `mmarch -v` and `mmarch v` do the same thing. The bare output is meant to be consumed by scripts, e.g.:
 
 ```bash
-if [ "$(mmarch version)" != "6.0.1" ]; then echo "unexpected mmarch version"; fi
+if [ "$(mmarch version)" != "7.0.0" ]; then echo "unexpected mmarch version"; fi
 ```
 
 ## Notes on `FOLDER`
@@ -490,6 +490,16 @@ If you are adding a `.bmp` file into a MM sprites archive (`mmspriteslod`) or MM
 
 If there is no `/p PALETTE_INDEX` after the `.bmp` file in your command, then the program will try to, from every `[*.]bitmaps.lod` archive file, automatically find a palette that matches your `.bmp` file's color table (palette). If you do specify a palette index, the program will not check if your palette exists in the `[*.]bitmaps.lod`.
 
+If no palette matches and you gave no `/p`, the file is **not** added and mmarch says so: under the wrong palette it would come out in the wrong colours. Pass `/p`, or put the palette in the archive first; the same command works, as long as the palette comes before the picture:
+
+```
+mmarch create my.bitmaps.lod mmbitmapslod . pal994.act mypicture.bmp
+```
+
+Replacing a `.bmp` already in the archive keeps its palette index and flags, so updating a picture in place needs no `/p`.
+
+`/p` only applies to `mmspriteslod` and `mmbitmapslod`; `mmiconslod` and `mm8loclod` keep each picture's palette inside the resource, so there is nothing to specify.
+
 Do not pad 0 to palette index. `pal023.act`'s palette index is 23.
 
 **Examples:**
@@ -552,7 +562,9 @@ mmarch --ec loose rename events.lod old.txt new.txt
 
 ### In-archive and extracted extension difference
 
-For some archive format, some files have different file extensions in the archive and as extracted files out of the archive. Don't wrong, you can use either extension to refer to the file. Below is the list (same extension is used if not listed):
+For some archive format, some files have different file extensions in the archive and as extracted files out of the archive. Don't wrong, you can use either extension to refer to the file. Below is the list (same extension is used if not listed).
+
+The `bmp` rows are real Windows bitmaps: the game's own image format, decoded on the way out and rebuilt on the way in. `act` is a 768-byte palette.
 
 | Archive Format | In-Archive Ext | Extracted Ext |
 |----------------|----------------|---------------|
@@ -574,7 +586,9 @@ Official Might and Magic VI and VII has some sprites with incorrect palette:
 * MM6's bat (yes, the monster that allegedly caused the coronavirus pandemic) images, stored in data/SPRITES.LOD as `BAT****` files, have incorrect palette: their palette should be 156 instead of 422 (pal422 exists in BITMAPS.LOD but is unrelated). However, it seems neither 422 nor 156 is correct for some of the bat bitmaps, both mmarch and MMArchive can't retrieve their correct palette.
 * MM7's "swptree" images, stored in data/SPRITES.LOD as `swptree*` files, have incorrect palette: their palette should be 120 instead of 940 (pal940 doesn't exist in BITMAPS.LOD at all).
 
-**mmarch** will not fix their problem and will skip these sprite bitmaps (though GrayFace's MMArchive can fix them). However, you may find these sprites bitmap files well extracted with correct palette in [`fixedsprites.zip` in the repo](https://github.com/might-and-magic/mmarch/blob/master/fixedsprites.zip).
+**mmarch** corrects both, the same way GrayFace's MMArchive does: it carries the same table of known-wrong palettes, keyed by the sprite's name *and* the bytes of its header, so a sprite you have modified yourself is left alone. The extracted `.bmp` files are byte-for-byte identical to the ones MMArchive produces.
+
+Sprites are coloured with a palette that lives in a `bitmaps.lod` next to the archive (`bitmaps.lod` itself, or any `*.bitmaps.lod`), so extract them from the game's data folder. Without one there is nothing to colour them with, and mmarch writes the stored bytes instead.
 
 ### Details of `DIFF_FOLDER` of `compare`
 
@@ -624,8 +638,8 @@ The batch file will not perform a self-deletion, users have to delete .bat, mmar
 
 **mmarch** has two implementations in this repository:
 
-* [`mmarch-rust/`](mmarch-rust) — the **current implementation**. Every released binary (Windows, Linux, macOS) and everything npm and crates.io install is built from it.
-* [`mmarch-delphi/`](mmarch-delphi) — the **original implementation**, built on GrayFace's RSPak/RSLod. Frozen at v5.0.0: kept in the repo for reference, no longer developed or released.
+* [`mmarch-rust/`](mmarch-rust): the **current implementation**. Every released binary (Windows, Linux, macOS) and everything npm and crates.io install is built from it.
+* [`mmarch-delphi/`](mmarch-delphi): the **original implementation**, built on GrayFace's RSPak/RSLod. Frozen at v5.0.0: kept in the repo for reference, no longer developed or released.
 
 ### Rust (all released binaries)
 
@@ -648,18 +662,11 @@ Windows only, and no longer part of a release. To build it anyway:
 * Open "mmarch.bdsproj" file with Borland Developer Studio 2006 or Delphi 10 (it may or may not work with newer version Borland, see [GrayFace's note](https://github.com/GrayFace/Misc))
 * Compile
 
-### Known differences between Rust and Delphi versions
+### Differences from the Delphi version
 
-The Rust implementation covers the same CLI interface as the Delphi 5.0.0 version, and since v6.0.0 the archive **headers** it writes are byte-identical to the Delphi version and to the real game files (v5 Rust wrote wrong `Version`/`Description`/`LodType` header fields for `mm78gameslod` and `mm8loclod`, making MMEditor/MMArchive reject those archives with "Unknown LOD version" — [issue #2](https://github.com/might-and-magic/mmarch/issues/2)). The remaining gaps:
+The Rust implementation covers the same CLI interface as the Delphi 5.0.0 version, and since v6.0.0 the archive **headers** it writes are byte-identical to the Delphi version and to the real game files.
 
-- **Anything added after v5.0.0:** the Delphi version is frozen at that release, so newer commands — currently just [`version`](#version) — are Rust-only.
-
-- **zlib byte-level difference:** both implementations produce valid zlib streams, but not bit-identical ones (different zlib libraries), so an archive built by one may differ byte-wise from the other while containing identical resources (`mmarch compare` shows them as equal).
-
-- **BMP palette handling (`/p` and auto-palette):** The Delphi version converts `.bmp` files to the internal LOD bitmap format with palette lookup when adding to `mmbitmapslod` or `mmspriteslod` archives. The Rust version stores `.bmp` files as generic data (BmpSize=0). The `/p PALETTE_INDEX` flag is accepted and validated but the palette index is not actually used for bitmap conversion. Auto-palette detection for `.bmp` files is also not implemented. Additionally, the Delphi version rejects non-BMP files in `mmspriteslod` archives, while the Rust version allows adding any file type.
-- **Non-ASCII case-insensitive comparison:** The Delphi version uses Windows locale-aware `SameText` for case-insensitive name matching (handles accented characters etc.). The Rust version uses ASCII-only case folding (`eq_ignore_ascii_case`). This only matters for archive entries with non-ASCII names, which are rare in game archives.
-- **File enumeration order:** The Rust version sorts file listings alphabetically when enumerating directories, while the Delphi version uses the raw `FindFirst`/`FindNext` order (typically alphabetical on NTFS). This may cause `add *.ext` or batch wildcard operations to produce entries in a slightly different order. Functionality is not affected.
-- **Unicode filesystem paths:** The Rust version fully supports Unicode paths. The Delphi version uses ANSI Win32 APIs and cannot handle non-ANSI characters in file or directory paths.
+The places where the two still behave differently are listed in [DEVNOTES.md § Deliberate differences from the Delphi version](DEVNOTES.md#5-deliberate-differences-from-the-delphi-version).
 
 ### Running tests
 
@@ -676,7 +683,7 @@ The workflow triggers on:
 
 - **Push** to `master` branch (Test)
 - **Pull requests** targeting `master` (Test)
-- **Tags** matching `v*` (Test-Build-Release: builds the Rust binaries for every platform — Windows 32-bit, Linux x64/arm64/ia32, macOS x64/arm64 — creates the GitHub Release, then publishes to [npm](https://www.npmjs.com/package/mmarch) and [crates.io](https://crates.io/crates/mmarch))
+- **Tags** matching `v*` (Test-Build-Release: builds the Rust binaries for every platform (Windows 32-bit, Linux x64/arm64/ia32, macOS x64/arm64), creates the GitHub Release, then publishes to [npm](https://www.npmjs.com/package/mmarch) and [crates.io](https://crates.io/crates/mmarch))
 
 Releasing a new version means bumping `mmarch-rust/Cargo.toml`, `mmarch-npm/package.json` and `MMARCH_VERSION` in `mmarch-rust/src/main.rs` to the same number, then pushing a matching `v*` tag. `MMARCHVERSION` in `mmarch-delphi/mmarch.dpr` is *not* part of that and stays at `5.0.0`.
 
@@ -689,7 +696,8 @@ Releasing a new version means bumping `mmarch-rust/Cargo.toml`, `mmarch-npm/pack
 * [2026-03-16] v4.0.0: fix batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files; add `checksum` command for CRC32 generation and verification; Rust port for Linux and macOS; npm release
 * [2026-03-17] v5.0.0: more Rust version fixes and comprehensive tests; replace ambiguous `/v[all]` with `--v[all]` flag; improve exit code handling instead of returning 0 in nearly all cases; fix some minor bugs of Delphi version
 * [2026-08-17] v6.0.0: Rust version compresses and extracts archive entries in parallel on all CPU cores (creating big archives is ~7× faster, byte-identical output); fix Rust-written `mm78gameslod`/`mm8loclod` headers that MMEditor/MMArchive rejected with "Unknown LOD version" ([#2](https://github.com/might-and-magic/mmarch/issues/2)); all binaries including Windows `mmarch.exe` (32-bit) are now the Rust build; the Delphi build is still released as `mmarch-delphi.exe`
-* [2026-08-17] v6.0.1: add `version` command (`mmarch version`, `--version` or `-v`, printing the bare version number); `help` also accepts `--help` and `-h`; publish the Rust version to [crates.io](https://crates.io/crates/mmarch) (`cargo install mmarch`); stop attaching `mmarch-delphi.exe` to releases — the Delphi version is frozen at [v5.0.0](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch.exe)
+* [2026-08-17] v6.0.1: add `version` command (`mmarch version`, `--version` or `-v`, printing the bare version number); `help` also accepts `--help` and `-h`; publish the Rust version to [crates.io](https://crates.io/crates/mmarch) (`cargo install mmarch`); stop attaching `mmarch-delphi.exe` to releases: the Delphi version is frozen at [v5.0.0](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch.exe)
+* [2026-09-02] v7.0.0: Rust version decodes textures, icons, sprites and Heroes 3 PCX resources into real `.bmp` files and converts them back when added (palette matched by content, `/p PALETTE_INDEX` honoured, mipmaps regenerated), correcting MM6's and MM7's known-wrong sprite palettes the way MMArchive does: where earlier versions wrote the undecoded bytes under a `.bmp` name, `extract` now writes a real picture, and `checksum` hashes exactly what `extract` writes, so both change for the picture resources of `bitmaps.lod`, `icons.lod`, `sprites.lod` and MM8's `English*.lod`; many correctness fixes found by differentially testing seven Heroes 3 distributions and 37 MM6/7/8 installs against a model of RSPak's own rules, above all resource sizes now read from the entry instead of the gap to the next address and MM8 localisation archives handled with a 64-byte name field instead of 16; faster despite doing more
 
 ## License
 
