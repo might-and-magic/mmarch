@@ -25,8 +25,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::io::Write;
-use std::sync::Once;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,14 +34,6 @@ static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn cargo_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn project_root() -> PathBuf {
-    cargo_dir().join("..")
-}
-
-fn delphi_dir() -> PathBuf {
-    project_root().join("mmarch-delphi")
 }
 
 fn test_general_dir() -> PathBuf {
@@ -68,31 +58,21 @@ fn cleanup(dir: &Path) {
     let _ = fs::remove_dir_all(dir);
 }
 
-static PRINT_BINARIES: Once = Once::new();
 
 /// Get list of binaries to test.
+/// The binaries under test.
+///
+/// Rust only. `mmarch-delphi/mmarch.exe` used to be run through the same suite
+/// on Windows, but the Delphi build is frozen at 5.0.0 and cannot regress, so
+/// there is nothing for CI to catch there; asserting the same numbers for both
+/// only meant that this port could never fix anything the Delphi CLI got
+/// wrong. What the two do differently is recorded in DEVNOTES.md
+/// § Deliberate differences from the Delphi version, checked by hand against
+/// the shipped 5.0.0 binary rather than on every push.
 fn get_binaries() -> Vec<(&'static str, PathBuf)> {
-    let mut bins = vec![];
     let rust_bin = PathBuf::from(env!("CARGO_BIN_EXE_mmarch"));
     assert!(rust_bin.exists(), "Rust binary not found at {:?}", rust_bin);
-    bins.push(("rust", rust_bin));
-
-    let delphi = delphi_dir().join("mmarch.exe");
-    let has_delphi = delphi.exists() && cfg!(target_os = "windows");
-    if has_delphi {
-        bins.push(("delphi", delphi));
-    }
-
-    PRINT_BINARIES.call_once(|| {
-        let msg = if has_delphi {
-            "\n=== Testing BOTH Rust and Delphi binaries ===\n\n"
-        } else {
-            "\n=== Testing Rust binary only (Delphi mmarch.exe not found) ===\n\n"
-        };
-        let _ = std::io::stderr().write_all(msg.as_bytes());
-    });
-
-    bins
+    vec![("rust", rust_bin)]
 }
 
 /// Run binary with CWD. All paths in args should be relative to cwd.
@@ -221,7 +201,8 @@ fn compare_listing(stdout: &str) -> Vec<(String, String)> {
         let clean = clean.trim();
         let bytes = clean.as_bytes();
         if bytes.len() > 4 && bytes[0] == b'[' && bytes[2] == b']' && bytes[3] == b' ' {
-            out.push(((clean[1..2]).to_string(), (clean[4..]).to_string()));
+            // compare prints native separators; the assertions spell them `/`.
+            out.push(((clean[1..2]).to_string(), clean[4..].replace('\\', "/")));
         }
     }
     out
@@ -3648,6 +3629,8 @@ fn real_archive_test(
     }
 
     // --- Checksum all ---
+    // The CRC is of the extracted file: `checksum` hashes exactly what
+    // `extract` writes.
     let stdout = run_ok_in(bin, &dir, &["checksum", archive_rel, "*"]);
     for (ext_name, hex_crc) in expected_crcs {
         assert!(stdout.contains(ext_name) && stdout.contains(hex_crc),

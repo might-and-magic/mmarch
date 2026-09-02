@@ -179,6 +179,29 @@ The Delphi version is frozen at 5.0.0, so anything added since (currently the
 `version` command) is Rust-only. Everything below is a place where both
 versions do the same job and behave differently.
 
+The test suite does not run against `mmarch-delphi/mmarch.exe`. It used to, on
+Windows, but a frozen binary cannot regress, and asserting the same numbers for
+both meant this port could never fix anything the Delphi CLI got wrong: the
+v6.0.1 expectations for MM8 `English*.lod` were the Delphi CLI's, and they were
+wrong. What follows was measured by hand against that 5.0.0 binary, under wine,
+across every fixture in `tests/data_general`. Redo it that way if you need to.
+
+`extract` agrees byte for byte on all of them but two: `BATATA0` and
+`Swptree1` in `real_sprite_pal.lod`, the sprites whose palette MMArchive
+corrects. The correction is in `RSLodEdt.PalFix`, MMArchive's editor unit, and
+the Delphi CLI does not call it, so it writes BATATA0 under the palette 422 its
+header names and falls back to raw bytes for Swptree1, whose palette 940 is in
+no `bitmaps.lod`.
+
+`checksum` disagrees far more widely, and disagrees with the Delphi CLI's own
+`extract`: `MMArchChecksum.pas` hashes the resource through
+`ExtractRawForChecksum`, i.e. the stored bytes, while `extract` writes the
+decoded ones. Every resource that gets decoded or converted therefore gets two
+different numbers out of the same binary: pictures, sprites, Heroes PCX, and
+`.str` resources whose NUL separators become CRLF. This port hashes what
+`extract` writes, so `mmarch checksum` and a CRC of the extracted file always
+agree.
+
 ### Output that differs
 
 * **zlib bytes.** Both produce valid zlib streams, not bit-identical ones
