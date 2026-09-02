@@ -179,12 +179,14 @@ The Delphi version is frozen at 5.0.0, so anything added since (currently the
 `version` command) is Rust-only. Everything below is a place where both
 versions do the same job and behave differently.
 
-The test suite does not run against `mmarch-delphi/mmarch.exe`. It used to, on
-Windows, but a frozen binary cannot regress, and asserting the same numbers for
-both meant this port could never fix anything the Delphi CLI got wrong: the
-v6.0.1 expectations for MM8 `English*.lod` were the Delphi CLI's, and they were
-wrong. What follows was measured by hand against that 5.0.0 binary, under wine,
-across every fixture in `tests/data_general`. Redo it that way if you need to.
+The test suite does not run against the Delphi build, and the repo no longer
+carries it. It used to do both, on Windows, but a frozen binary cannot regress,
+and asserting the same numbers for both meant this port could never fix
+anything the Delphi CLI got wrong: the v6.0.1 expectations for MM8
+`English*.lod` were the Delphi CLI's, and they were wrong. What follows was
+measured by hand across every fixture in `tests/data_general`, running the
+5.0.0 `mmarch.exe` from [its release](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch.exe)
+under wine. Redo it that way if you need to.
 
 `extract` agrees byte for byte on all of them but two: `BATATA0` and
 `Swptree1` in `real_sprite_pal.lod`, the sprites whose palette MMArchive

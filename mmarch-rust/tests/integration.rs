@@ -62,13 +62,13 @@ fn cleanup(dir: &Path) {
 /// Get list of binaries to test.
 /// The binaries under test.
 ///
-/// Rust only. `mmarch-delphi/mmarch.exe` used to be run through the same suite
-/// on Windows, but the Delphi build is frozen at 5.0.0 and cannot regress, so
-/// there is nothing for CI to catch there; asserting the same numbers for both
-/// only meant that this port could never fix anything the Delphi CLI got
-/// wrong. What the two do differently is recorded in DEVNOTES.md
-/// § Deliberate differences from the Delphi version, checked by hand against
-/// the shipped 5.0.0 binary rather than on every push.
+/// Rust only. The Delphi build used to be run through the same suite on
+/// Windows, but it is frozen at 5.0.0 and cannot regress, so there is nothing
+/// for CI to catch there; asserting the same numbers for both only meant that
+/// this port could never fix anything the Delphi CLI got wrong. What the two
+/// do differently is recorded in DEVNOTES.md § Deliberate differences from the
+/// Delphi version, checked by hand against the 5.0.0 release rather than on
+/// every push.
 fn get_binaries() -> Vec<(&'static str, PathBuf)> {
     let rust_bin = PathBuf::from(env!("CARGO_BIN_EXE_mmarch"));
     assert!(rust_bin.exists(), "Rust binary not found at {:?}", rust_bin);
