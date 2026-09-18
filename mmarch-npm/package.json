@@ -1,6 +1,6 @@
 {
   "name": "mmarch",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "Command line tool to handle Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows, Linux and macOS",
   "author": "Tom Chen <tomchen.org@gmail.com>",
   "license": "MIT",
@@ -24,11 +24,20 @@
     "mmarch": "bin/mmarch"
   },
   "files": [
-    "bin/mmarch",
-    "install.js"
+    "bin/mmarch"
   ],
   "scripts": {
-    "postinstall": "node install.js"
+    "test": "node --test test/*.test.js && node test/install.js",
+    "test:install": "node test/install.js"
+  },
+  "optionalDependencies": {
+    "mmarch-win32-x64": "7.0.1",
+    "mmarch-win32-ia32": "7.0.1",
+    "mmarch-linux-x64": "7.0.1",
+    "mmarch-linux-arm64": "7.0.1",
+    "mmarch-linux-ia32": "7.0.1",
+    "mmarch-darwin-x64": "7.0.1",
+    "mmarch-darwin-arm64": "7.0.1"
   },
   "engines": {
     "node": ">=14"

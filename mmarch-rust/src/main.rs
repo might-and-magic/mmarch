@@ -15,7 +15,7 @@ use std::fs;
 use std::io;
 use std::sync::OnceLock;
 
-const MMARCH_VERSION: &str = "7.0.0";
+const MMARCH_VERSION: &str = "7.0.1";
 const MMARCH_URL: &str = "https://github.com/might-and-magic/mmarch";
 
 // ============================================================

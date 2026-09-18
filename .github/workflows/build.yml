@@ -23,13 +23,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --test integration --release
+      - run: cargo test --release
+
+  npm-test:
+    name: npm (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: 24
+          - os: windows-latest
+            node: 24
+          - os: macos-latest
+            node: 24
+          # Node 14 ships npm 6: keep the launcher and package format usable
+          # with the oldest Node version declared by the main package.
+          - os: ubuntu-latest
+            node: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Use current npm
+        if: matrix.node == 24
+        run: npm install -g npm@latest
+      - name: Test launcher and packaging
+        if: matrix.node == 24
+        working-directory: mmarch-npm
+        run: npm test
+      - name: Test installation with npm 6
+        if: matrix.node == 14
+        working-directory: mmarch-npm
+        run: npm run test:install
 
   build:
     name: Build ${{ matrix.name }}
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
-    needs: test
+    needs: [test, npm-test]
     strategy:
       matrix:
         include:
@@ -179,6 +212,7 @@ jobs:
     needs: release
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -193,8 +227,32 @@ jobs:
       # belt and braces: guarantee npm >= 11.5.1 whatever the image ships
       - run: npm install -g npm@latest
 
-      - name: Publish
-        working-directory: mmarch-npm
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mmarch-*
+          path: artifacts
+
+      - name: Prepare platform packages and main package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node mmarch-npm/scripts/prepare-packages.js artifacts mmarch-npm/dist "$RELEASE_TAG"
+
+      - name: Smoke test the Linux binary
+        run: |
+          expected=$(node -p 'require("./mmarch-npm/package.json").version')
+          actual=$(mmarch-npm/dist/mmarch-linux-x64/mmarch --version | tr -d '\r')
+          test "$actual" = "$expected"
+
+      # New packages need an initial authenticated publish before their npm
+      # trusted publishers can be configured. NPM_TOKEN is optional after
+      # every platform package trusts this repository's build.yml workflow.
+      - name: Publish platform packages
+        run: node mmarch-npm/scripts/publish-platforms.js mmarch-npm/dist
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish main package last
+        working-directory: mmarch-npm/dist/mmarch
         run: |
           npm --version
           npm publish --provenance --access public

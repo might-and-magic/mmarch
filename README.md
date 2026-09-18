@@ -2,9 +2,9 @@
 
 Command line tool to handle (extract, replace, compare resources and more) Heroes of Might and Magic 3 and Might and Magic 6, 7, 8 resource archive files (e.g. lod files) for Windows, Linux and macOS.
 
-[Download mmarch v7.0.0 for Windows](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch.exe) (32 or 64 bit)
+[Download mmarch v7.0.1 for Windows](https://github.com/might-and-magic/mmarch/releases/download/v7.0.1/mmarch.exe) (32 or 64 bit)
 
-Other platforms: Linux [x64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-linux-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-linux-arm64), [ia32](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-linux-ia32) | macOS [x64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-darwin-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.0/mmarch-darwin-arm64) | or [`npm i -g mmarch`](https://www.npmjs.com/package/mmarch) with [Node.js](https://nodejs.org/) | or [`cargo install mmarch`](https://crates.io/crates/mmarch) with [Rust](https://www.rust-lang.org/)
+Other platforms: Linux [x64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.1/mmarch-linux-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.1/mmarch-linux-arm64), [ia32](https://github.com/might-and-magic/mmarch/releases/download/v7.0.1/mmarch-linux-ia32) | macOS [x64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.1/mmarch-darwin-x64), [arm64](https://github.com/might-and-magic/mmarch/releases/download/v7.0.1/mmarch-darwin-arm64) | or [`npm i -g mmarch`](https://www.npmjs.com/package/mmarch) with [Node.js](https://nodejs.org/) | or [`cargo install mmarch`](https://crates.io/crates/mmarch) with [Rust](https://www.rust-lang.org/)
 
 All of the above are the [Rust](#development) port of [GrayFace's MMArchive](https://grayface.github.io/mm/#MMArchive)'s RSPak library ([repo](https://github.com/GrayFace/Misc/)). If you need a graphical user interface tool, use MMArchive. The [Delphi](#development) Windows version 5.0.0 ([download](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch.exe)) will not be updated.
 
@@ -410,13 +410,13 @@ mmarch version
 Print the version number of mmarch and nothing else - no program name, no leading `v`, no trailing text:
 
 ```
-7.0.0
+7.0.1
 ```
 
 `mmarch --version`, `mmarch -v` and `mmarch v` do the same thing. The bare output is meant to be consumed by scripts, e.g.:
 
 ```bash
-if [ "$(mmarch version)" != "7.0.0" ]; then echo "unexpected mmarch version"; fi
+if [ "$(mmarch version)" != "7.0.1" ]; then echo "unexpected mmarch version"; fi
 ```
 
 ## Notes on `FOLDER`
@@ -685,22 +685,41 @@ The workflow triggers on:
 - **Pull requests** targeting `master` (Test)
 - **Tags** matching `v*` (Test-Build-Release: builds the Rust binaries for every platform (Windows 32-bit, Linux x64/arm64/ia32, macOS x64/arm64), creates the GitHub Release, then publishes to [npm](https://www.npmjs.com/package/mmarch) and [crates.io](https://crates.io/crates/mmarch))
 
-Releasing a new version means bumping `mmarch-rust/Cargo.toml`, `mmarch-npm/package.json` and `MMARCH_VERSION` in `mmarch-rust/src/main.rs` to the same number, then pushing a matching `v*` tag. `MMARCHVERSION` in `mmarch-delphi/mmarch.dpr` is *not* part of that and stays at `5.0.0`.
+Releasing a new version means bumping `mmarch-rust/Cargo.toml`, `mmarch-npm/package.json` (both `version` and every exact version in `optionalDependencies`) and `MMARCH_VERSION` in `mmarch-rust/src/main.rs` to the same number, then pushing a matching `v*` tag. `MMARCHVERSION` in `mmarch-delphi/mmarch.dpr` is *not* part of that and stays at `5.0.0`.
+
+### npm packaging and publishing
+
+Requires Node.js 14+. Platform binaries are installed as optional dependencies, without install scripts. If the binary is missing, reinstall with `npm install -g mmarch --include=optional` (npm 6: use `--optional`).
+
+Run packaging and installation tests with:
+
+```bash
+cd mmarch-npm
+npm test              # Node 18+ for the unit test runner
+npm run test:install  # also works with Node 14/npm 6
+```
+
+Release CI prepares packages in `mmarch-npm/dist/` and publishes all seven platform packages before `mmarch`. For their first release, publish manually or set the `NPM_TOKEN` Actions secret with package-creation, publishing and 2FA-bypass permissions. Then configure each package's [trusted publisher](https://docs.npmjs.com/trusted-publishers/) for `might-and-magic/mmarch`, workflow `build.yml`, with direct `npm publish` allowed, to use token-free publishing like the main package.
 
 ## Change Log
+
 * [2020-03-11] v1.0: initial release
 * [2020-03-18] v2.0: support palette; support `*.EXT` and batch archive extraction; deal with in-archive & extracted file extension differences and the "cannot find the path specified" problem caused by it
 * [2020-03-31] v3.0: add `compare` method that can compare two dir and generate NSIS/Batch installer; tutorial
 * [2020-04-02] v3.1: diff-files-to-* instead of compare-files-to-*; diff-add-keep; fix problem moving to subfolder
 * [2020-04-22] v3.2: minor fix: diff-files-to-* do not work when old and new diff folders are the same
-* [2026-03-16] v4.0.0: fix batch archive optimization when adding or deleting multiple files; fix missing begin/end block in add procedure for non-BMP files; add `checksum` command for CRC32 generation and verification; Rust port for Linux and macOS; npm release
-* [2026-03-17] v5.0.0: more Rust version fixes and comprehensive tests; replace ambiguous `/v[all]` with `--v[all]` flag; improve exit code handling instead of returning 0 in nearly all cases; fix some minor bugs of Delphi version
-* [2026-08-17] v6.0.0: Rust version compresses and extracts archive entries in parallel on all CPU cores (creating big archives is ~7× faster, byte-identical output); fix Rust-written `mm78gameslod`/`mm8loclod` headers that MMEditor/MMArchive rejected with "Unknown LOD version" ([#2](https://github.com/might-and-magic/mmarch/issues/2)); all binaries including Windows `mmarch.exe` (32-bit) are now the Rust build; the Delphi build is still released as `mmarch-delphi.exe`
-* [2026-08-17] v6.0.1: add `version` command (`mmarch version`, `--version` or `-v`, printing the bare version number); `help` also accepts `--help` and `-h`; publish the Rust version to [crates.io](https://crates.io/crates/mmarch) (`cargo install mmarch`); stop attaching `mmarch-delphi.exe` to releases: the Delphi version is frozen at [v5.0.0](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch.exe)
-* [2026-09-02] v7.0.0: Rust version decodes textures, icons, sprites and Heroes 3 PCX resources into real `.bmp` files and converts them back when added (palette matched by content, `/p PALETTE_INDEX` honoured, mipmaps regenerated), correcting MM6's and MM7's known-wrong sprite palettes the way MMArchive does: where earlier versions wrote the undecoded bytes under a `.bmp` name, `extract` now writes a real picture, and `checksum` hashes exactly what `extract` writes, so both change for the picture resources of `bitmaps.lod`, `icons.lod`, `sprites.lod` and MM8's `English*.lod`; many correctness fixes found by differentially testing seven Heroes 3 distributions and 37 MM6/7/8 installs against a model of RSPak's own rules, above all resource sizes now read from the entry instead of the gap to the next address and MM8 localisation archives handled with a 64-byte name field instead of 16; faster despite doing more
+* [2026-03-16] v4.0.0: fix batch archive optimization and non-BMP file addition; add `checksum` for CRC32 generation and verification; Rust port for Linux and macOS; npm release
+* [2026-03-17] v5.0.0: Rust fixes and expanded tests; replace ambiguous `/v[all]` with `--v[all]`; return meaningful exit codes; minor Delphi fixes
+* [2026-08-17] v6.0.0: parallel Rust compression and extraction (~7× faster creation of large archives, byte-identical output); fix `mm78gameslod`/`mm8loclod` headers rejected by MMEditor/MMArchive with "Unknown LOD version" ([#2](https://github.com/might-and-magic/mmarch/issues/2)); Windows `mmarch.exe` (32-bit) now also uses Rust, with Delphi still available as `mmarch-delphi.exe`
+* [2026-08-17] v6.0.1: add `version` (`mmarch version`, `--version` or `-v`) and help aliases (`--help`, `-h`); publish to [crates.io](https://crates.io/crates/mmarch) (`cargo install mmarch`); stop including the Delphi binary in releases, leaving it frozen at [v5.0.0](https://github.com/might-and-magic/mmarch/releases/download/v5.0.0/mmarch.exe)
+* [2026-09-02] v7.0.0: decode textures, icons, sprites and Heroes 3 PCX resources to real `.bmp` files and convert them back on import, with content-based palette matching, `/p PALETTE_INDEX`, regenerated mipmaps and corrected MM6/MM7 sprite palettes; `extract` now produces actual images instead of raw bytes, and `checksum` follows the extracted content, changing results for picture resources in `bitmaps.lod`, `icons.lod`, `sprites.lod` and MM8's `English*.lod`; fix archive handling through differential tests across seven Heroes 3 distributions and 37 MM6/7/8 installs, including entry sizes and 64-byte MM8 localisation names; improve performance
+* [2026-09-18] v7.0.1: replace the npm `postinstall` downloader with platform-specific optional dependencies, so `npm install -g mmarch` works in npm 12 (with install scripts disabled and needs no GitHub download); no changes to archive processing
 
 ## License
 
 [MIT License](https://github.com/might-and-magic/mmarch/blob/master/LICENSE)
+
+For third-party dependencies and the legacy Delphi source's attribution, see
+[COPYRIGHT.md](COPYRIGHT.md).
 
 <small>Note: Although most files in GrayFace's [Misc](https://github.com/GrayFace/Misc) repo are under [GPLv2](https://github.com/GrayFace/Misc/blob/master/LICENSE), [RSPak](https://github.com/GrayFace/Misc/tree/master/RSPak) is separately licensed under MIT as stated in [RSSysUtils.pas](https://github.com/GrayFace/Misc/blob/master/RSPak/RSSysUtils.pas#L3427). mmarch-Delphi is based on RSPak, and mmarch-Rust is a port of RSPak and mmarch-Delphi, both mmarch versions are licensed under MIT.</small>
