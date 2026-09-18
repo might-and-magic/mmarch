@@ -17,7 +17,9 @@ const exec = promisify(execFile);
 
 async function main() {
   assert.ok(process.env.npm_execpath, "Run using npm run test:install");
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "mmarch-install-"));
+  // macOS exposes /var through a symlink, while process.cwd() returns the
+  // physical /private/var path. Compare against a canonical temporary path.
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mmarch-install-")));
   const output = path.join(root, "dist");
   const downloads = [];
   const packages = new Map();
