@@ -691,7 +691,7 @@ Releasing a new version means bumping `mmarch-rust/Cargo.toml`, `mmarch-npm/pack
 
 Requires Node.js 14+. Platform binaries are installed as optional dependencies, without install scripts. If the binary is missing, reinstall with `npm install -g mmarch --include=optional` (npm 6: use `--optional`).
 
-Release CI publishes all seven platform packages before `mmarch`. See the repository's [publishing guide](https://github.com/might-and-magic/mmarch#npm-packaging-and-publishing) for tests and first-release setup.
+Release CI publishes all seven `@mightandmagic/mmarch-*` platform packages before `mmarch`. See the repository's [publishing guide](https://github.com/might-and-magic/mmarch#npm-packaging-and-publishing) for tests and first-release setup.
 
 ## Change Log
 

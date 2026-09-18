@@ -699,7 +699,7 @@ npm test              # Node 18+ for the unit test runner
 npm run test:install  # also works with Node 14/npm 6
 ```
 
-Release CI prepares packages in `mmarch-npm/dist/` and publishes all seven platform packages before `mmarch`. For their first release, publish manually or set the `NPM_TOKEN` Actions secret with package-creation, publishing and 2FA-bypass permissions. Then configure each package's [trusted publisher](https://docs.npmjs.com/trusted-publishers/) for `might-and-magic/mmarch`, workflow `build.yml`, with direct `npm publish` allowed, to use token-free publishing like the main package.
+Release CI prepares packages in `mmarch-npm/dist/` and publishes all seven `@mightandmagic/mmarch-*` platform packages before `mmarch`. For their first release, publish manually or set the `NPM_TOKEN` Actions secret with package-creation, publishing and 2FA-bypass permissions. Then configure each package's [trusted publisher](https://docs.npmjs.com/trusted-publishers/) for `might-and-magic/mmarch`, workflow `build.yml`, with direct `npm publish` allowed, to use token-free publishing like the main package. To retry npm separately using existing release binaries, run the workflow manually with `npm_release_tag` set to the matching tag.
 
 ## Change Log
 

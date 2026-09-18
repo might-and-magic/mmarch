@@ -6,12 +6,13 @@ const { spawnSync } = require("child_process");
 const { optionalDependencies, version } = require("../package.json");
 
 const platform = `${process.platform}-${process.arch}`;
-const packageName = `mmarch-${platform}`;
+const packagePrefix = "@mightandmagic/mmarch-";
+const packageName = `${packagePrefix}${platform}`;
 
 if (!Object.prototype.hasOwnProperty.call(optionalDependencies, packageName)) {
   console.error(
     `[mmarch] Unsupported platform: ${platform}.\n` +
-    `Supported: ${Object.keys(optionalDependencies).map(name => name.slice(7)).join(", ")}`
+    `Supported: ${Object.keys(optionalDependencies).map(name => name.slice(packagePrefix.length)).join(", ")}`
   );
   process.exit(1);
 }

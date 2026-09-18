@@ -20,7 +20,7 @@ function preparePackages(artifactDir, outputDir, releaseTag) {
   if (releaseTag && releaseTag !== `v${pkg.version}`) {
     throw new Error(`Release tag ${releaseTag} does not match mmarch@${pkg.version}`);
   }
-  const packageNames = Object.keys(artifacts).map(platform => `mmarch-${platform}`);
+  const packageNames = Object.keys(artifacts).map(platform => `@mightandmagic/mmarch-${platform}`);
   if (JSON.stringify(Object.keys(pkg.optionalDependencies).sort()) !==
       JSON.stringify(packageNames.sort())) {
     throw new Error("optionalDependencies must match the supported platform packages");
@@ -28,7 +28,7 @@ function preparePackages(artifactDir, outputDir, releaseTag) {
 
   // Validate every input before producing any publishable package.
   const packages = Object.entries(artifacts).map(([platform, artifact]) => {
-    const name = `mmarch-${platform}`;
+    const name = `@mightandmagic/mmarch-${platform}`;
     if (pkg.optionalDependencies[name] !== pkg.version) {
       throw new Error(`${name} must be pinned to ${pkg.version}`);
     }
@@ -47,7 +47,7 @@ function preparePackages(artifactDir, outputDir, releaseTag) {
   const npmDir = path.resolve(__dirname, "..");
   const license = path.join(npmDir, "..", "LICENSE");
   for (const { name, os, cpu, binary, source } of packages) {
-    const dir = path.join(outputDir, name);
+    const dir = path.join(outputDir, path.basename(name));
     fs.mkdirSync(dir);
     fs.copyFileSync(source, path.join(dir, binary));
     fs.chmodSync(path.join(dir, binary), 0o755);
@@ -59,6 +59,7 @@ function preparePackages(artifactDir, outputDir, releaseTag) {
       license: pkg.license,
       repository: pkg.repository,
       homepage: pkg.homepage,
+      publishConfig: { access: "public" },
       os: [os],
       cpu: [cpu],
       // Linux binaries are statically linked against musl, so they also run

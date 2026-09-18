@@ -6,7 +6,7 @@ const pkg = require("../package.json");
 
 function publishPlatforms(outputDir, npm) {
   for (const [name, version] of Object.entries(pkg.optionalDependencies)) {
-    const dir = path.join(outputDir, name);
+    const dir = path.join(outputDir, path.basename(name));
     const manifest = require(path.join(dir, "package.json"));
     if (manifest.name !== name || manifest.version !== version) {
       throw new Error(`Prepared package does not match ${name}@${version}`);

@@ -44,7 +44,7 @@ for (const platform of ["win32-x64", "win32-ia32", "linux-x64", "linux-arm64", "
     const [os, arch] = platform.split("-");
     const calls = launch(os, arch);
     const binary = os === "win32" ? "mmarch.exe" : "mmarch";
-    assert.equal(calls.resolve, `mmarch-${platform}/${binary}`);
+    assert.equal(calls.resolve, `@mightandmagic/mmarch-${platform}/${binary}`);
     assert.equal(calls.spawn[0], `/node_modules/${calls.resolve}`);
     assert.deepEqual(Array.from(calls.spawn[1]), ["extract", "archive with spaces.lod", "*.txt"]);
     assert.equal(calls.spawn[2].stdio, "inherit");
@@ -57,6 +57,7 @@ test("reports unsupported platforms before resolving or spawning", () => {
   const calls = launch("freebsd", "x64");
   assert.equal(calls.exit, 1);
   assert.match(calls.errors[0], /Unsupported platform: freebsd-x64/);
+  assert.match(calls.errors[0], /Supported: win32-x64, win32-ia32, linux-x64/);
   assert.equal(calls.resolve, undefined);
   assert.equal(calls.spawn, undefined);
 });
@@ -64,7 +65,7 @@ test("reports unsupported platforms before resolving or spawning", () => {
 test("explains missing optional dependencies without a module stack trace", () => {
   const calls = launch("linux", "x64", undefined, true);
   assert.equal(calls.exit, 1);
-  assert.match(calls.errors[0], /mmarch-linux-x64/);
+  assert.match(calls.errors[0], /@mightandmagic\/mmarch-linux-x64/);
   assert.match(calls.errors[0], /--include=optional/);
   assert.match(calls.errors[0], /npm 6/);
   assert.doesNotMatch(calls.errors[0], /MODULE_NOT_FOUND/);

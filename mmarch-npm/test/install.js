@@ -75,24 +75,26 @@ async function main() {
       fs.writeFileSync(path.join(dir, artifact === "mmarch-win32" ? "mmarch.exe" : "mmarch"), artifact);
     }
     preparePackages(root, output, `v${pkg.version}`);
-    const hostPackage = `mmarch-${process.platform}-${process.arch}`;
+    const hostPackage = `@mightandmagic/mmarch-${process.platform}-${process.arch}`;
     const binary = process.platform === "win32" ? "mmarch.exe" : "mmarch";
     // Node itself is a portable native fixture that lets us check arguments,
     // stdio, failures and signals through the installed mmarch launcher.
-    fs.copyFileSync(process.execPath, path.join(output, hostPackage, binary));
-    fs.chmodSync(path.join(output, hostPackage, binary), 0o755);
-    for (const name of fs.readdirSync(output)) {
-      const dir = path.join(output, name);
+    fs.copyFileSync(process.execPath, path.join(output, path.basename(hostPackage), binary));
+    fs.chmodSync(path.join(output, path.basename(hostPackage), binary), 0o755);
+    for (const directory of fs.readdirSync(output)) {
+      const dir = path.join(output, directory);
+      const manifest = JSON.parse(fs.readFileSync(path.join(dir, "package.json")));
+      const name = manifest.name;
       const packResult = JSON.parse((await npm(["pack", "--json", "--ignore-scripts"], { cwd: dir })).stdout);
       // npm 6-11 return an array; npm 12 keys results by package name.
       const packed = Array.isArray(packResult) ? packResult[0] : packResult[name];
       const tarball = path.join(dir, packed.filename);
       const files = packed.files.map(file => file.path).sort();
-      assert.deepEqual(files, ["LICENSE", "README.md", name === "mmarch" ? "bin/mmarch" : name.startsWith("mmarch-win32") ? "mmarch.exe" : "mmarch", "package.json"].sort());
+      assert.deepEqual(files, ["LICENSE", "README.md", name === "mmarch" ? "bin/mmarch" : manifest.os[0] === "win32" ? "mmarch.exe" : "mmarch", "package.json"].sort());
       packages.set(name, {
         filename: packed.filename,
         tarball,
-        manifest: JSON.parse(fs.readFileSync(path.join(dir, "package.json"))),
+        manifest,
         shasum: crypto.createHash("sha1").update(fs.readFileSync(tarball)).digest("hex"),
       });
     }
@@ -107,7 +109,8 @@ async function main() {
     fs.mkdirSync(local);
     fs.writeFileSync(path.join(local, "package.json"), '{"private":true}');
     await npm(["install", `mmarch@${pkg.version}`, "--ignore-scripts"], { cwd: local });
-    assert.deepEqual(fs.readdirSync(path.join(local, "node_modules")).filter(name => name.startsWith("mmarch-")).sort(), [hostPackage]);
+    assert.deepEqual(fs.readdirSync(path.join(local, "node_modules", "@mightandmagic")).sort(), [path.basename(hostPackage)]);
+    assert.deepEqual(fs.readdirSync(path.join(local, "node_modules")).filter(name => name.startsWith("mmarch-")), []);
     // npm 6 fetches optional tarballs before rejecting incompatible platforms;
     // modern npm can skip those downloads using the registry metadata.
     if (npmMajor >= 7) {

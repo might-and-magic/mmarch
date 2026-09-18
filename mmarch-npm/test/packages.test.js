@@ -29,12 +29,13 @@ test("prepares complete, version-locked packages without install scripts", t => 
     const manifest = JSON.parse(fs.readFileSync(path.join(dir, "package.json")));
     const [os, cpu] = platform.split("-");
     const binary = os === "win32" ? "mmarch.exe" : "mmarch";
-    assert.equal(manifest.name, `mmarch-${platform}`);
+    assert.equal(manifest.name, `@mightandmagic/mmarch-${platform}`);
     assert.equal(manifest.version, pkg.optionalDependencies[manifest.name]);
     assert.deepEqual(manifest.os, [os]);
     assert.deepEqual(manifest.cpu, [cpu]);
     assert.equal(manifest.libc, undefined);
     assert.equal(manifest.scripts, undefined);
+    assert.deepEqual(manifest.publishConfig, { access: "public" });
     assert.deepEqual(manifest.files, [binary]);
     assert.equal(fs.readFileSync(path.join(dir, binary), "utf8"), artifact);
     assert.match(fs.readFileSync(path.join(dir, "LICENSE"), "utf8"), /MIT License/);
@@ -91,7 +92,7 @@ test("publishes every platform and skips already published versions on retry", t
     }
     assert.equal(args[0], "publish");
     assert.deepEqual(args.slice(2), ["--provenance", "--access", "public"]);
-    published.push(path.basename(args[1]));
+    published.push(require(path.join(args[1], "package.json")).name);
   });
   assert.deepEqual(published, Object.keys(pkg.optionalDependencies).filter(name => name !== existing));
 });

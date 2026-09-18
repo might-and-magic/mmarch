@@ -31,13 +31,13 @@
     "test:install": "node test/install.js"
   },
   "optionalDependencies": {
-    "mmarch-win32-x64": "7.0.1",
-    "mmarch-win32-ia32": "7.0.1",
-    "mmarch-linux-x64": "7.0.1",
-    "mmarch-linux-arm64": "7.0.1",
-    "mmarch-linux-ia32": "7.0.1",
-    "mmarch-darwin-x64": "7.0.1",
-    "mmarch-darwin-arm64": "7.0.1"
+    "@mightandmagic/mmarch-win32-x64": "7.0.1",
+    "@mightandmagic/mmarch-win32-ia32": "7.0.1",
+    "@mightandmagic/mmarch-linux-x64": "7.0.1",
+    "@mightandmagic/mmarch-linux-arm64": "7.0.1",
+    "@mightandmagic/mmarch-linux-ia32": "7.0.1",
+    "@mightandmagic/mmarch-darwin-x64": "7.0.1",
+    "@mightandmagic/mmarch-darwin-arm64": "7.0.1"
   },
   "engines": {
     "node": ">=14"
